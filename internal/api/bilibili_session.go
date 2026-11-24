@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -257,13 +258,8 @@ func (s *Server) biliHealth(ctx context.Context, user string) string {
 	if c == nil {
 		return "unconfigured"
 	}
-	var enc string
-	if err := s.DB.QueryRow(ctx, "SELECT encrypted_cookies FROM bilibili_sessions WHERE user_id = $1 AND status = 'connected'", user).Scan(&enc); err != nil {
-		return "disconnected"
-	}
-	cookies, err := c.decrypt(enc)
-	if err != nil {
-		s.biliNeedsReconnect(ctx, user)
+	cookies := s.biliAccountCookies(ctx, user)
+	if cookies == "" {
 		return "disconnected"
 	}
 	res, root, err := biliGet(ctx, &http.Client{Timeout: 15 * time.Second}, "https://api.bilibili.com/x/web-interface/nav", cookies)
@@ -286,4 +282,47 @@ func (s *Server) biliHealth(ctx context.Context, user string) string {
 		return "rate_limited"
 	}
 	return "error"
+}
+
+// biliAccountCookies is BiliBiliSessionService.connectedCookies: the decrypted cookies of a connected session; a
+// session that no longer decrypts is marked for reconnection.
+func (s *Server) biliAccountCookies(ctx context.Context, user string) string {
+	c := s.biliCrypto()
+	if c == nil {
+		return ""
+	}
+	var enc string
+	if err := s.DB.QueryRow(ctx, "SELECT encrypted_cookies FROM bilibili_sessions WHERE user_id = $1 AND status = 'connected'", user).Scan(&enc); err != nil {
+		return ""
+	}
+	cookies, err := c.decrypt(enc)
+	if err != nil {
+		s.biliNeedsReconnect(ctx, user)
+		return ""
+	}
+	return cookies
+}
+
+// accountRate is BiliBiliSessionScope.checkRateLimit: 30 signed-in extractions a minute per user.
+type accountRate struct {
+	mu   sync.Mutex
+	hits map[string][]time.Time
+}
+
+var biliAccountRate = &accountRate{hits: map[string][]time.Time{}}
+
+func (a *accountRate) allow(user string) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	now := time.Now()
+	q := a.hits[user]
+	for len(q) > 0 && now.Sub(q[0]) > time.Minute {
+		q = q[1:]
+	}
+	if len(q) >= 30 {
+		a.hits[user] = q
+		return false
+	}
+	a.hits[user] = append(q, now)
+	return true
 }

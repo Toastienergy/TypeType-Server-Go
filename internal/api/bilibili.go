@@ -87,7 +87,25 @@ func (s *Server) bilibiliStream(w http.ResponseWriter, r *http.Request) {
 		rel, _ := s.bili.Related(ctx, bilibili.BVID(raw))
 		relc <- rel
 	}()
-	v, err := s.bili.Video(ctx, raw)
+	vctx, account := ctx, false
+	if user != "" && !strings.HasPrefix(user, "guest:") {
+		if cookies := s.biliAccountCookies(ctx, user); cookies != "" {
+			if !biliAccountRate.allow(user) {
+				httpx.Error(w, r, http.StatusUnprocessableEntity, "BiliBili is temporarily limiting requests. Try again later.", "bilibili_rate_limited")
+				return
+			}
+			vctx, account = bilibili.WithAccount(ctx, cookies), true
+		}
+	}
+	v, err := s.bili.Video(vctx, raw)
+	if account {
+		if err == nil {
+			s.DB.Exec(context.WithoutCancel(ctx), "UPDATE bilibili_sessions SET last_used_at = $2 WHERE user_id = $1", user, time.Now().UnixMilli())
+		} else if msg := err.Error(); errors.Is(err, bilibili.ErrRiskControl) || strings.Contains(msg, "412") || strings.Contains(msg, "-352") ||
+			strings.Contains(strings.ToLower(msg), "risk") {
+			s.biliNeedsReconnect(context.WithoutCancel(ctx), user)
+		}
+	}
 	if err != nil {
 		switch {
 		case errors.Is(err, bilibili.ErrRiskControl):

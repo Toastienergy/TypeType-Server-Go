@@ -193,9 +193,12 @@ func (c *Client) webTicket(ctx context.Context, cookies string) (string, int64, 
 
 // Get fetches a Bilibili API URL with the visitor cookies and decodes its JSON envelope.
 func (c *Client) Get(ctx context.Context, u, orig string) (map[string]any, error) {
-	cookies, err := c.visitorCookies(ctx)
-	if err != nil {
-		return nil, err
+	cookies := accountCookies(ctx, u)
+	if cookies == "" {
+		var err error
+		if cookies, err = c.visitorCookies(ctx); err != nil {
+			return nil, err
+		}
 	}
 	req, _ := http.NewRequestWithContext(ctx, "GET", u, nil)
 	c.uaHeaders(req, orig)

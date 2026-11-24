@@ -131,3 +131,15 @@ func TestSubchunkedRange(t *testing.T) {
 		}
 	}
 }
+
+func TestAccountRate(t *testing.T) {
+	a := &accountRate{hits: map[string][]time.Time{}}
+	for i := 0; i < 30; i++ {
+		if !a.allow("u") {
+			t.Fatalf("refused at %d", i)
+		}
+	}
+	if a.allow("u") || !a.allow("v") {
+		t.Fatal("limit")
+	}
+}

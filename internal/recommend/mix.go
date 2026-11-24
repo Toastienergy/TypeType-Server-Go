@@ -15,10 +15,11 @@ const (
 
 type plan struct {
 	targetSub, targetDisc, novelty, floor int
+	ratio, floorRatio                     float64
 }
 
 // newPlan is HomeRecommendationQuotaPlanner for the home feed, where no source weights apply.
-func newPlan(limit int, pool *Pool, intent Intent, persona int) plan {
+func newPlan(limit int, pool *Pool, intent Intent, persona int, shorts bool) plan {
 	subs, disc := len(pool.Subscriptions), len(pool.Discovery)
 	theme, explore, trend := 0, 0, 0
 	for _, s := range pool.SourceByURL {
@@ -56,10 +57,17 @@ func newPlan(limit int, pool *Pool, intent Intent, persona int) plan {
 	case PersonaDeep:
 		ratio -= 0.06
 	}
-	ratio = max(0.30, min(ratio, 0.80))
-	p := plan{targetDisc: min(int(float64(limit)*ratio), disc)}
+	lo, hi, floor := 0.30, 0.80, 0.50
+	if shorts {
+		lo, hi, floor = 0.60, 0.82, 0.65
+		if intent == IntentDeep {
+			floor = 0.60
+		}
+	}
+	ratio = max(lo, min(ratio, hi))
+	p := plan{targetDisc: min(int(float64(limit)*ratio), disc), ratio: ratio, floorRatio: floor}
 	p.targetSub = min(limit-p.targetDisc, subs)
-	p.floor = min(int(float64(limit)*0.5), disc)
+	p.floor = min(int(float64(limit)*floor), disc)
 	nr := map[Intent]float64{IntentAuto: 0.25, IntentQuick: 0.35, IntentDeep: 0.20}[intent]
 	p.novelty = max(1, min(int(float64(limit)*nr), limit))
 	return p
@@ -220,14 +228,22 @@ func (m *mixState) pickDiscovery(pool *Pool, noveltyOnly bool, now time.Time) (*
 
 // Page is one mixed page and the cursor to the next one (empty when nothing is left).
 type Page struct {
-	Items      []Video
-	NextCursor string
+	Items                   []Video
+	NextCursor              string
+	DiscCount               int
+	TargetRatio, FloorRatio float64
+	Sources                 map[string]Source
 }
 
 // Mix is HomeRecommendationMixEngine: subscriptions and discovery interleaved under quotas, with no channel more than
 // twice a page, no channel twice in a row, no repeated topic, and a novelty budget.
 func Mix(pool *Pool, c Cursor, limit int, intent Intent, now time.Time) Page {
-	p := newPlan(limit, pool, intent, c.Persona.Kind)
+	return mix(pool, c, limit, intent, false, now)
+}
+
+func mix(pool *Pool, c Cursor, limit int, intent Intent, shorts bool, now time.Time) Page {
+	p := newPlan(limit, pool, intent, c.Persona.Kind, shorts)
+	sources := map[string]Source{}
 	m := &mixState{subIndex: c.SubIndex, discIndex: c.DiscIndex, subRun: max(0, min(c.SubRun, maxSubscriptionRun)), preferDiscovery: c.PreferDiscovery,
 		channelCount: map[string]int{}, channels: lastN(c.RecentChannels, 4), semantic: lastN(c.RecentSemantic, 5), pairs: lastN(c.TopicPairs, 14),
 		urls: lastN(c.RecentURLs, 80), momentum: map[string]int{}, cooldown: map[string]int64{}, persona: c.Persona}
@@ -273,13 +289,17 @@ func Mix(pool *Pool, c Cursor, limit int, intent Intent, now time.Time) Page {
 			break
 		}
 		items = append(items, *v)
-		isSub := sub
-		if src, ok := pool.SourceByURL[v.URL]; ok {
-			isSub = src == Subscription
+		src, ok := pool.SourceByURL[v.URL]
+		if !ok {
+			src = Exploration
+			if sub {
+				src = Subscription
+			}
 		}
-		m.selected(*v, isSub, novelty, now)
+		sources[v.URL] = src
+		m.selected(*v, src == Subscription, novelty, now)
 	}
-	out := Page{Items: items}
+	out := Page{Items: items, DiscCount: m.discCount, TargetRatio: p.ratio, FloorRatio: p.floorRatio, Sources: sources}
 	if len(items) > 0 && (m.subIndex < len(pool.Subscriptions) || m.discIndex < len(pool.Discovery)) {
 		out.NextCursor = Cursor{SubIndex: m.subIndex, DiscIndex: m.discIndex, SubRun: m.subRun, PreferDiscovery: m.preferDiscovery, Seed: c.Seed,
 			RecentChannels: m.channels, RecentSemantic: m.semantic, Momentum: m.momentum, Cooldown: m.cooldown, TopicPairs: m.pairs,

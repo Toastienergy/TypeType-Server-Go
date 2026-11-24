@@ -38,11 +38,19 @@ func (s *Server) searchRoutes(rt *Router) {
 		if !ok {
 			return
 		}
-		if svc != 0 {
+		var page youtube.SearchPage
+		var err error
+		switch svc {
+		case 0:
+			page, err = s.YT.Search(r.Context(), q, r.URL.Query().Get("contentFilter"), r.URL.Query().Get("nextpage"))
+		case 5:
+			if page, ok = s.bilibiliSearch(r.Context(), w, r, q, r.URL.Query().Get("contentFilter"), r.URL.Query().Get("nextpage")); !ok {
+				return
+			}
+		default:
 			notWritten(w, r)
 			return
 		}
-		page, err := s.YT.Search(r.Context(), q, r.URL.Query().Get("contentFilter"), r.URL.Query().Get("nextpage"))
 		if errors.Is(err, youtube.ErrBadPage) {
 			plain(w, r, http.StatusBadRequest, "Invalid page")
 			return

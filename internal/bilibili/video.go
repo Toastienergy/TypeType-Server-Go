@@ -330,3 +330,23 @@ func (c *Client) Trending(ctx context.Context) ([]map[string]any, error) {
 	}
 	return out, nil
 }
+
+// Search runs one page of /x/web-interface/search/type; searchType is video, live_room, bili_user, media_bangumi or
+// media_ft.
+func (c *Client) Search(ctx context.Context, keyword, searchType string, page int) ([]map[string]any, error) {
+	u := "https://api.bilibili.com/x/web-interface/search/type?search_type=" + searchType + "&keyword=" + javaEncode(keyword) + "&page=" + strconv.Itoa(page)
+	res, err := c.Get(ctx, u, wwwReferer)
+	if err != nil {
+		return nil, err
+	}
+	if err := codeErr(res, "search"); err != nil {
+		return nil, err
+	}
+	var out []map[string]any
+	for _, x := range arr(obj(res, "data"), "result") {
+		if o, ok := x.(map[string]any); ok {
+			out = append(out, o)
+		}
+	}
+	return out, nil
+}

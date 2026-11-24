@@ -128,6 +128,11 @@ func (s *Server) hedgedOpen(ctx context.Context, primary, alternate, rng string)
 // a body that resumes on another mirror or switches to a faster one.
 func (s *Server) readBilibiliRange(ctx context.Context, primary string, alternates []string, rng string) (*mediaReply, *commentErr) {
 	mirrors := bilibiliMirrorOrder(primary, alternates)
+	if subchunksEnabled() {
+		if start, end, ok := splitRangeHeader(rng); ok && start >= 0 && (end < 0 || start <= end && end-start+1 > subchunkSize) {
+			return s.readBilibiliSubchunked(ctx, mirrors, start, end)
+		}
+	}
 	last := "Proxy fetch failed"
 	for attempt := 1; attempt <= bilibiliRangeAttempts; attempt++ {
 		if ctx.Err() != nil {

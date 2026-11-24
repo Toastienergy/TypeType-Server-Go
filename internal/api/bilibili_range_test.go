@@ -111,3 +111,23 @@ func TestHedgedOpenPicksFasterMirror(t *testing.T) {
 		t.Fatalf("used %s body %s after %v", used, b, time.Since(began))
 	}
 }
+
+func TestSubchunkedRange(t *testing.T) {
+	data := testData(3_500_000)
+	srv, calls := rangeServer(t, data, 0, false)
+	defer srv.Close()
+	for _, env := range []string{"BILIBILI_SUBCHUNK_PROXY", "BILIBILI_CONCURRENT_PREFETCH"} {
+		t.Setenv(env, "true")
+		s := &Server{proxyClient: srv.Client()}
+		calls.Store(0)
+		m, cerr := s.readBilibiliRange(context.Background(), srv.URL+"/v.m4s", nil, "bytes=100-")
+		if cerr != nil {
+			t.Fatal(cerr.msg)
+		}
+		got, err := io.ReadAll(m.body)
+		m.close()
+		if err != nil || !bytes.Equal(got, data[100:]) || m.crange != "bytes 100-3499999/3500000" || m.length != "3499900" || calls.Load() != 4 {
+			t.Fatalf("%s: err %v, %d bytes, equal %v, %s, length %s, calls %d", env, err, len(got), bytes.Equal(got, data[100:]), m.crange, m.length, calls.Load())
+		}
+	}
+}

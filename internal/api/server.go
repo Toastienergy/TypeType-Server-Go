@@ -135,6 +135,7 @@ func (s *Server) Routes() (http.Handler, *Router) {
 	s.egressResetRoute(rt)
 	s.backupRoutes(rt)
 	s.pipePipeRoutes(rt)
+	s.recommenderAdminRoutes(rt)
 	h := httpx.Gzip(rt.Handler())
 	h = httpx.CORS(s.Cfg.AllowedOrigins, s.Cfg.AllowAnyOrigin, h)
 	return httpx.Observe(s.Log, h), rt

@@ -1,0 +1,64 @@
+package api
+
+import (
+	"log/slog"
+	"net/http"
+	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"typetype.dev/server/internal/cache"
+	"typetype.dev/server/internal/config"
+	"typetype.dev/server/internal/httpx"
+)
+
+// Build data, set with -ldflags at release time.
+var (
+	Version       = "dev"
+	Revision      = "unknown"
+	ShortRevision = "unknown"
+	BuildTime     = "unknown"
+)
+
+const instanceCacheControl = "no-store, no-cache, must-revalidate, max-age=0"
+
+// Server holds what the handlers share. Each route family lives in its own file and registers itself in routes.
+type Server struct {
+	Cfg   *config.Config
+	DB    *pgxpool.Pool
+	Cache *cache.Cache
+	Log   *slog.Logger
+	zones zones
+}
+
+type zones struct {
+	extraction, dearrow, streams, channel, proxy, storyboard, userData *httpx.Zone
+}
+
+func New(cfg *config.Config, db *pgxpool.Pool, c *cache.Cache, log *slog.Logger) *Server {
+	w := time.Minute
+	return &Server{Cfg: cfg, DB: db, Cache: c, Log: log, zones: zones{
+		extraction: httpx.NewZone(60, w), dearrow: httpx.NewZone(600, w), streams: httpx.NewZone(360, w),
+		channel: httpx.NewZone(180, w), proxy: httpx.NewZone(6000, w), storyboard: httpx.NewZone(1200, w),
+		userData: httpx.NewZone(120, w),
+	}}
+}
+
+func (s *Server) Routes() (http.Handler, *Router) {
+	rt := NewRouter()
+	s.metaRoutes(rt)
+	h := httpx.Gzip(rt.Handler())
+	h = httpx.CORS(s.Cfg.AllowedOrigins, s.Cfg.AllowAnyOrigin, h)
+	return httpx.Observe(s.Log, h), rt
+}
+
+func (s *Server) metaRoutes(rt *Router) {
+	rt.Handle("GET", "/health", func(w http.ResponseWriter, r *http.Request) {
+		httpx.RawJSON(w, http.StatusOK, []byte(`{"status":"ok"}`))
+	})
+	rt.Handle("GET", "/version", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", instanceCacheControl)
+		httpx.JSON(w, http.StatusOK, map[string]string{"service": "server", "version": Version, "revision": Revision,
+			"shortRevision": ShortRevision, "buildTime": BuildTime})
+	})
+}

@@ -98,9 +98,11 @@ func (s *Server) sessionRoutes(rt *Router) {
 				return
 			}
 			st, err := s.Admin.Get(r.Context())
-			if err == nil && st.ActiveSessionsEnabled {
-				s.activity.report(user, kind, &req, r.UserAgent())
+			var keyed bool
+			if kind != "activity" {
+				s.DB.QueryRow(r.Context(), "SELECT EXISTS (SELECT 1 FROM presence_keys WHERE user_id = $1)", user).Scan(&keyed)
 			}
+			s.activity.report(user, kind, &req, r.UserAgent(), err == nil && st.ActiveSessionsEnabled, keyed)
 			w.WriteHeader(http.StatusNoContent)
 		})
 	}
@@ -110,7 +112,9 @@ func (s *Server) sessionRoutes(rt *Router) {
 	rt.Handle("POST", "/sessions/playback/stop", handle("stop"))
 }
 
-func (a *activity) report(user, kind string, req *activityRequest, ua string) {
+// report records the session when the admin turned session tracking on, and the presence only for a user who
+// holds a presence key, as ActiveSessionService and PresenceService do separately.
+func (a *activity) report(user, kind string, req *activityRequest, ua string, sessions, presence bool) {
 	now := time.Now().UnixMilli()
 	device := ""
 	if req.DeviceID != nil {
@@ -138,6 +142,8 @@ func (a *activity) report(user, kind string, req *activityRequest, ua string) {
 			Thumbnail: req.Thumbnail, ChannelName: req.ChannelName}
 		if prev != nil && prev.NowPlaying != nil {
 			np.VideoURL, np.Title = prev.NowPlaying.VideoURL, prev.NowPlaying.Title
+		} else if p, ok := a.presence[user]; ok {
+			np.VideoURL, np.Title = p.VideoURL, p.Title
 		}
 		if req.VideoURL != nil {
 			np.VideoURL = *req.VideoURL
@@ -147,12 +153,18 @@ func (a *activity) report(user, kind string, req *activityRequest, ua string) {
 		}
 		if np.VideoURL != "" {
 			rec.NowPlaying = &np
-			a.presence[user] = np
+			if presence {
+				a.presence[user] = np
+			} else {
+				delete(a.presence, user)
+			}
 		}
 		rec.LastPlaybackAt = &now
 	case "stop":
 		rec.LastPlaybackAt = &now
 		delete(a.presence, user)
 	}
-	a.sessions[id] = rec
+	if sessions {
+		a.sessions[id] = rec
+	}
 }

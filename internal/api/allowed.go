@@ -118,6 +118,10 @@ type accessProfile struct {
 }
 
 func (s *Server) accessFor(ctx context.Context, user string) *accessProfile {
+	return memoized("access\x00"+user, func() (*accessProfile, bool) { return s.loadAccess(ctx, user), ctx.Err() == nil })
+}
+
+func (s *Server) loadAccess(ctx context.Context, user string) *accessProfile {
 	if user != "" {
 		if role, err := s.Auth.Role(ctx, user); err == nil && role != nil && *role == "admin" {
 			return nil

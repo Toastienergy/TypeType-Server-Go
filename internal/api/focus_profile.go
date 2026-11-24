@@ -193,6 +193,10 @@ func (s *Server) partitionStudy(ctx context.Context, user string, f focusRow, no
 
 // focusFor is FocusService.profileFor: nil when Focus does not change what the user sees.
 func (s *Server) focusFor(ctx context.Context, user string) *focusProfile {
+	return memoized("focus\x00"+user, func() (*focusProfile, bool) { return s.loadFocus(ctx, user), ctx.Err() == nil })
+}
+
+func (s *Server) loadFocus(ctx context.Context, user string) *focusProfile {
 	now := time.Now().UnixMilli()
 	f, err := s.readFocus(ctx, user, now)
 	if err != nil || !f.active(now) {

@@ -162,6 +162,9 @@ func (rt *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	rte.h(w, r)
+	if r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions {
+		userMemos.invalidate()
+	}
 }
 
 // Handler fills every catalog route not written yet with the 501 answer.

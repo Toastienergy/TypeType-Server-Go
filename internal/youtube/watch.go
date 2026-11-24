@@ -315,3 +315,6 @@ func likesFromPrimary(pri map[string]any) int64 {
 	}
 	return -1
 }
+
+// ParsePlayer reads the page facts of a /player answer, as FetchWatch does with its own.
+func ParsePlayer(id string, p map[string]any) *Watch { return parsePlayer(id, p) }

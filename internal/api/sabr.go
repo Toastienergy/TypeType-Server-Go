@@ -191,6 +191,11 @@ func (s *Server) sabrCreate(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), sabrInfoTimeout)
 	info, err := s.Sabr.Token().Info(ctx, videoID)
 	cancel()
+	if _, restricted := requiresSession.Load(videoID); err != nil && restricted {
+		if acct, ok := s.youtubeAccount(r.Context(), user); ok {
+			info, _, err = s.accountSabr(r.Context(), user, acct, videoID)
+		}
+	}
 	infoAt := time.Since(began)
 	if err != nil {
 		s.Log.Warn("sabr info", "videoId", videoID, "err", err)

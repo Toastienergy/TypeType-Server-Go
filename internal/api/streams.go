@@ -171,6 +171,11 @@ func (s *Server) youtubeBootstrap(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), sabrInfoTimeout)
 	defer cancel()
 	in, err := s.Sabr.Token().Info(ctx, id)
+	if _, restricted := requiresSession.Load(id); err != nil && restricted {
+		if acct, ok := s.youtubeAccount(ctx, s.optionalUserID(r)); ok {
+			in, _, err = s.accountSabr(ctx, s.optionalUserID(r), acct, id)
+		}
+	}
 	if err != nil {
 		s.Log.Warn("bootstrap", "videoId", id, "err", err)
 		httpx.Error(w, r, http.StatusBadGateway, "SABR bootstrap metadata unavailable", "error")
@@ -338,6 +343,17 @@ func (s *Server) youtubeStream(w http.ResponseWriter, r *http.Request, live bool
 			resp.HlsURL = s.hlsPath(resp.HlsURL)
 		}
 		if len(resp.VideoOnlyStreams) == 0 && len(resp.AudioStreams) == 0 && len(resp.VideoStreams) == 0 && resp.HlsURL == "" {
+			if rs := resp.restriction; rs != nil && (rs.Code == "age_restricted" || rs.Code == "members_only") {
+				requiresSession.Store(id, true)
+				if s.youtubeCrypto() != nil {
+					if acct, ok := s.youtubeAccount(r.Context(), user); ok {
+						s.writeAccountStream(w, r, user, acct, id, raw, &resp)
+						return
+					}
+					httpx.Error(w, r, http.StatusBadRequest, "Connect YouTube to access this video", "youtube_session_required")
+					return
+				}
+			}
 			if resp.restriction != nil {
 				writeRestriction(w, r, resp.restriction)
 				return

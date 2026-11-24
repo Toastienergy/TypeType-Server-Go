@@ -442,4 +442,4 @@ func pairingCode() string {
 }
 
 // tokenHTTP bounds every call to TypeType-Token, as TypetypeTokenHttpClient.bounded does.
-var tokenHTTP = &http.Client{Timeout: 20 * time.Second}
+var tokenHTTP = &http.Client{Timeout: 30 * time.Second}

@@ -242,6 +242,7 @@ func (s *Server) addStudyChannel(w http.ResponseWriter, r *http.Request, user st
 		}
 	}
 	s.recs.invalidate(ctx, user)
+	s.invalidateAndWarm(user)
 	resp := map[string]any{"channelUrl": canon, "status": "active", "unlockAt": nil}
 	if f.enabled && added > f.startedAt && now-added < studyAddDelay {
 		resp["status"], resp["unlockAt"] = "pending", added+studyAddDelay
@@ -311,5 +312,6 @@ func (s *Server) removeStudyChannel(w http.ResponseWriter, r *http.Request, user
 		}
 	}
 	s.recs.invalidate(ctx, user)
+	s.invalidateAndWarm(user)
 	w.WriteHeader(http.StatusNoContent)
 }

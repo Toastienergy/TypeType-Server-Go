@@ -65,6 +65,7 @@ ON CONFLICT (user_id, channel_url) DO UPDATE SET name = EXCLUDED.name, avatar_ur
 			return
 		}
 		s.feedChanged(user)
+		s.invalidateAndWarm(user)
 		httpx.JSON(w, http.StatusCreated, it)
 	}))
 	rt.Handle("DELETE", "/subscriptions", s.authed(func(w http.ResponseWriter, r *http.Request, user string) {
@@ -107,6 +108,7 @@ func (s *Server) unsubscribe(w http.ResponseWriter, r *http.Request, user, raw s
 		return
 	}
 	s.feedChanged(user)
+	s.invalidateAndWarm(user)
 	s.pushSubscriptionRemoved(r.Context(), user, c)
 	w.WriteHeader(http.StatusNoContent)
 }

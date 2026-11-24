@@ -47,6 +47,7 @@ type Server struct {
 	feeds       *feeds
 	warm        *warmup
 	mirrorWatch *mirrorWatch
+	homeWarm    *homeWarm
 	recs        *recPools
 	subs        *subtitles
 	deArrow     *dearrow
@@ -81,6 +82,7 @@ func New(cfg *config.Config, db *pgxpool.Pool, c *cache.Cache, log *slog.Logger)
 	srv.feeds = newFeeds(srv)
 	srv.warm = newWarmup(srv)
 	srv.startMirrorWatch()
+	srv.startHomeWarm()
 	srv.startPushPoller()
 	srv.recs = newRecPools(srv)
 	srv.subs = newSubtitles(srv)

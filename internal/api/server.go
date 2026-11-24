@@ -13,6 +13,7 @@ import (
 	"typetype.dev/server/internal/cache"
 	"typetype.dev/server/internal/config"
 	"typetype.dev/server/internal/httpx"
+	"typetype.dev/server/internal/sabr"
 	"typetype.dev/server/internal/store"
 )
 
@@ -34,6 +35,7 @@ type Server struct {
 	Log      *slog.Logger
 	Admin    *store.Admin
 	Auth     *auth.Service
+	Sabr     *sabr.Store
 	features features
 	zones    zones
 }
@@ -45,7 +47,12 @@ type zones struct {
 func New(cfg *config.Config, db *pgxpool.Pool, c *cache.Cache, log *slog.Logger) *Server {
 	w := time.Minute
 	return &Server{Cfg: cfg, DB: db, Cache: c, Log: log, Admin: store.NewAdmin(db),
-		Auth: auth.NewService(db, cfg.JWTSecret, auth.SessionConfigFromEnv()), features: loadFeatures(cfg), zones: zones{
+		Auth: auth.NewService(db, cfg.JWTSecret, auth.SessionConfigFromEnv()), features: loadFeatures(cfg),
+		Sabr: sabr.NewStore(sabr.Options{TokenURL: cfg.SubtitleService, ProxyURL: cfg.YoutubeProxyURL,
+			MaxSessions: max(1, config.IntEnv("SABR_MAX_SESSIONS", 24)),
+			Idle:        time.Duration(max(60, config.IntEnv("SABR_IDLE_EVICTION_SECONDS", 240))) * time.Second,
+			BudgetBytes: int64(max(64, config.IntEnv("SABR_SESSION_BYTE_BUDGET_MB", 512))) << 20}),
+		zones: zones{
 			extraction: httpx.NewZone(60, w), dearrow: httpx.NewZone(600, w), streams: httpx.NewZone(360, w),
 			channel: httpx.NewZone(180, w), proxy: httpx.NewZone(6000, w), storyboard: httpx.NewZone(1200, w),
 			userData: httpx.NewZone(120, w),
@@ -56,6 +63,7 @@ func (s *Server) Routes() (http.Handler, *Router) {
 	rt := NewRouter()
 	s.metaRoutes(rt)
 	s.authRoutes(rt)
+	s.sabrRoutes(rt)
 	h := httpx.Gzip(rt.Handler())
 	h = httpx.CORS(s.Cfg.AllowedOrigins, s.Cfg.AllowAnyOrigin, h)
 	return httpx.Observe(s.Log, h), rt

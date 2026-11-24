@@ -20,13 +20,17 @@ type Router struct {
 }
 
 type node struct {
-	static    map[string]*node
-	param     *node
-	paramName string
-	suffix    string
-	tail      *node
-	tailName  string
-	handlers  map[string]http.HandlerFunc
+	static   map[string]*node
+	param    *node
+	suffix   string
+	tail     *node
+	handlers map[string]route
+}
+
+// route keeps the parameter names of its own Kotlin path: two routes may name the same position differently.
+type route struct {
+	h     http.HandlerFunc
+	names []string
 }
 
 func NewRouter() *Router {
@@ -41,23 +45,26 @@ func (rt *Router) add(method, path string, h http.HandlerFunc) {
 		method = "GET"
 	}
 	n := rt.root
+	var names []string
 	for _, seg := range strings.Split(strings.TrimPrefix(path, "/"), "/") {
 		if m := segTail.FindStringSubmatch(seg); m != nil {
 			if n.tail == nil {
 				n.tail = &node{}
-				n.tailName = m[1]
-				if n.tailName == "" {
-					n.tailName = "rest"
-				}
 			}
+			name := m[1]
+			if name == "" {
+				name = "rest"
+			}
+			names = append(names, name)
 			n = n.tail
 			break
 		}
 		if m := segParam.FindStringSubmatch(seg); m != nil {
 			if n.param == nil {
 				n.param = &node{}
-				n.paramName, n.suffix = m[1], m[2]
+				n.suffix = m[2]
 			}
+			names = append(names, m[1])
 			n = n.param
 			continue
 		}
@@ -72,12 +79,12 @@ func (rt *Router) add(method, path string, h http.HandlerFunc) {
 		n = next
 	}
 	if n.handlers == nil {
-		n.handlers = map[string]http.HandlerFunc{}
+		n.handlers = map[string]route{}
 	}
-	n.handlers[method] = h
+	n.handlers[method] = route{h: h, names: names}
 	if method == "GET" {
 		if _, ok := n.handlers["HEAD"]; !ok {
-			n.handlers["HEAD"] = h
+			n.handlers["HEAD"] = route{h: h, names: names}
 		}
 	}
 }
@@ -89,7 +96,7 @@ func (rt *Router) Handle(method, path string, h http.HandlerFunc) {
 }
 
 type match struct {
-	names, values []string
+	values []string
 }
 
 func (n *node) find(segs []string, m *match) *node {
@@ -98,7 +105,7 @@ func (n *node) find(segs []string, m *match) *node {
 			return n
 		}
 		if n.tail != nil && n.tail.handlers != nil {
-			m.names, m.values = append(m.names, n.tailName), append(m.values, "")
+			m.values = append(m.values, "")
 			return n.tail
 		}
 		return nil
@@ -116,12 +123,12 @@ func (n *node) find(segs []string, m *match) *node {
 			if v, err := url.PathUnescape(value); err == nil {
 				value = v
 			}
-			mark := len(m.names)
-			m.names, m.values = append(m.names, n.paramName), append(m.values, value)
+			mark := len(m.values)
+			m.values = append(m.values, value)
 			if found := n.param.find(segs[1:], m); found != nil {
 				return found
 			}
-			m.names, m.values = m.names[:mark], m.values[:mark]
+			m.values = m.values[:mark]
 		}
 	}
 	if n.tail != nil && n.tail.handlers != nil {
@@ -129,7 +136,7 @@ func (n *node) find(segs []string, m *match) *node {
 		if v, err := url.PathUnescape(rest); err == nil {
 			rest = v
 		}
-		m.names, m.values = append(m.names, n.tailName), append(m.values, rest)
+		m.values = append(m.values, rest)
 		return n.tail
 	}
 	return nil
@@ -143,15 +150,17 @@ func (rt *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
-	h := n.handlers[r.Method]
-	if h == nil {
+	rte, ok := n.handlers[r.Method]
+	if !ok {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-	for i, name := range m.names {
-		r.SetPathValue(name, m.values[i])
+	for i, name := range rte.names {
+		if i < len(m.values) {
+			r.SetPathValue(name, m.values[i])
+		}
 	}
-	h(w, r)
+	rte.h(w, r)
 }
 
 // Handler fills every catalog route not written yet with the 501 answer.

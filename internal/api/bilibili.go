@@ -124,6 +124,11 @@ func (s *Server) bilibiliStream(w http.ResponseWriter, r *http.Request) {
 		StreamSegments: []youtube.Chapter{}, VideoStreams: []videoStream{}, AudioStreams: []audioStream{}, VideoOnlyStreams: []videoStream{},
 		Subtitles: []youtube.Subtitle{}, PreviewFrames: []youtube.Frames{}, SponsorBlockSegments: []sponsorSegment{},
 		RelatedStreams: []youtube.VideoItem{}, Collections: []any{}, Parts: []any{}, EndScreenElements: []any{}, StartPosition: startParam(raw)}
+	resp.Collections = v.Collections
+	for _, pg := range v.Pages {
+		resp.Parts = append(resp.Parts, map[string]any{"page": pg.Number, "title": pg.Title,
+			"url": "https://www.bilibili.com/video/" + v.BVID + "?p=" + strconv.Itoa(pg.Number), "thumbnailUrl": v.Thumbnail, "duration": pg.Duration})
+	}
 	if v.PubDate > 0 {
 		resp.Uploaded = v.PubDate * 1000
 		resp.UploadDate = time.Unix(v.PubDate, 0).In(beijing).Format("2006-01-02 15:04:05")

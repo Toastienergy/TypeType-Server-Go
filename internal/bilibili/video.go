@@ -90,6 +90,15 @@ type Video struct {
 	Tags                                []string
 	VideoOnly                           []Media
 	Audio                               []Media
+	Pages                               []Page
+	Collections                         []any
+}
+
+// Page is one part of a multi-part video, as the view API lists it.
+type Page struct {
+	Number   int
+	Title    string
+	Duration int64
 }
 
 var ErrUnavailable = errors.New("bilibili video unavailable")
@@ -257,6 +266,11 @@ func (c *Client) Video(ctx context.Context, rawURL string) (*Video, error) {
 	}
 	if len(pages) == 0 {
 		return nil, fmt.Errorf("%w: no pages", ErrUnavailable)
+	}
+	v.Collections = collections(d)
+	for i, x := range pages {
+		pg, _ := x.(map[string]any)
+		v.Pages = append(v.Pages, Page{Number: i + 1, Title: str(pg, "part"), Duration: num(pg["duration"])})
 	}
 	page, _ := pages[p-1].(map[string]any)
 	v.CID, v.Duration = num(page["cid"]), num(page["duration"])

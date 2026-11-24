@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -91,5 +92,45 @@ func (s *Server) internalRoutes(rt *Router) {
 			}
 		}
 		httpx.JSON(w, http.StatusOK, map[string]any{"status": status, "checks": out})
+	})
+}
+
+var egressReset struct {
+	mu   sync.Mutex
+	last time.Time
+}
+
+// egressResetRoute is YoutubeEgressResetService: after a VPN or proxy rotation, forget what the old address learned
+// (token sessions, visitor id, backoffs, idle connections), at most once every two minutes.
+func (s *Server) egressResetRoute(rt *Router) {
+	rt.Handle("POST", "/internal/provider/youtube/reset", func(w http.ResponseWriter, r *http.Request) {
+		want := strings.TrimSpace(os.Getenv("YOUTUBE_EGRESS_RESET_TOKEN"))
+		got := r.Header.Get("X-Internal-Token")
+		if got == "" {
+			if a := r.Header.Get("Authorization"); len(a) > 7 && strings.EqualFold(a[:7], "Bearer ") {
+				got = a[7:]
+			}
+		}
+		if want == "" || strings.TrimSpace(got) != want {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		egressReset.mu.Lock()
+		if since := time.Since(egressReset.last); !egressReset.last.IsZero() && since < 2*time.Minute {
+			egressReset.mu.Unlock()
+			w.Header().Set("Retry-After", strconv.FormatInt(int64((2*time.Minute-since+time.Second-1)/time.Second), 10))
+			httpx.Error(w, r, http.StatusTooManyRequests, "YouTube egress reset is in cooldown", "egress_reset_cooldown")
+			return
+		}
+		egressReset.last = time.Now()
+		egressReset.mu.Unlock()
+		cleared := s.Sabr.Token().Forget() + s.YT.Reset()
+		keys := 0
+		for _, p := range []string{"youtube-related:v1:*:backoff", "*:v2:*:backoff"} {
+			n, _ := s.Cache.DeleteMatching(r.Context(), p)
+			keys += n
+		}
+		s.Log.Warn("youtube egress reset", "clearedFailureEntries", cleared, "clearedBackoffKeys", keys)
+		httpx.JSON(w, http.StatusOK, map[string]any{"clearedFailureEntries": cleared, "clearedBackoffKeys": keys, "tokenSessionRecoveryTriggered": false})
 	})
 }

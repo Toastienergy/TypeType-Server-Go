@@ -264,3 +264,14 @@ func (t *Token) fetch(ctx context.Context, videoID, reload string) (*Info, error
 	}
 	return parseSession(videoID, raw)
 }
+
+// Forget drops every remembered session so the next playback asks the token service again; it returns how many
+// entries were cleared.
+func (t *Token) Forget() int {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	n := len(t.cache)
+	t.cache = map[string]*infoCall{}
+	t.client.CloseIdleConnections()
+	return n
+}

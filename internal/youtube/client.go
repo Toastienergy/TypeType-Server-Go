@@ -149,3 +149,18 @@ func (c *Client) Call(ctx context.Context, ci ClientInfo, endpoint string, body 
 	}
 	return out, nil
 }
+
+// Reset drops the visitor id, the remembered comment tokens and the idle connections, after the egress changed.
+func (c *Client) Reset() int {
+	c.mu.Lock()
+	c.vis, c.at = "", time.Time{}
+	c.mu.Unlock()
+	n := 0
+	c.commentTokens.Range(func(k, _ any) bool {
+		c.commentTokens.Delete(k)
+		n++
+		return true
+	})
+	c.http.CloseIdleConnections()
+	return n
+}

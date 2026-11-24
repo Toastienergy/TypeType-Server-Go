@@ -65,6 +65,7 @@ func run(log *slog.Logger) error {
 		}
 	case <-ctx.Done():
 	}
+	srv.Close()
 	shutdown, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	return hs.Shutdown(shutdown)

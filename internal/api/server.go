@@ -40,6 +40,7 @@ type Server struct {
 	YT          *youtube.Client
 	sponsor     *sponsorBlock
 	proxyClient *http.Client
+	notices     *noticeHub
 	features    features
 	zones       zones
 }
@@ -56,7 +57,7 @@ func New(cfg *config.Config, db *pgxpool.Pool, c *cache.Cache, log *slog.Logger)
 			MaxSessions: max(1, config.IntEnv("SABR_MAX_SESSIONS", 24)),
 			Idle:        time.Duration(max(60, config.IntEnv("SABR_IDLE_EVICTION_SECONDS", 240))) * time.Second,
 			BudgetBytes: int64(max(64, config.IntEnv("SABR_SESSION_BYTE_BUDGET_MB", 512))) << 20}),
-		YT: youtube.NewClient(cfg.YoutubeProxyURL), sponsor: newSponsorBlock(c), proxyClient: newProxyClient(),
+		YT: youtube.NewClient(cfg.YoutubeProxyURL), sponsor: newSponsorBlock(c), proxyClient: newProxyClient(), notices: newNoticeHub(),
 		zones: zones{
 			extraction: httpx.NewZone(60, w), dearrow: httpx.NewZone(600, w), streams: httpx.NewZone(360, w),
 			channel: httpx.NewZone(180, w), proxy: httpx.NewZone(6000, w), storyboard: httpx.NewZone(1200, w),
@@ -71,6 +72,7 @@ func (s *Server) Routes() (http.Handler, *Router) {
 	s.sabrRoutes(rt)
 	s.streamRoutes(rt)
 	s.proxyRoutes(rt)
+	s.eventRoutes(rt)
 	h := httpx.Gzip(rt.Handler())
 	h = httpx.CORS(s.Cfg.AllowedOrigins, s.Cfg.AllowAnyOrigin, h)
 	return httpx.Observe(s.Log, h), rt
@@ -89,3 +91,6 @@ func (s *Server) metaRoutes(rt *Router) {
 }
 
 func isNoRows(err error) bool { return errors.Is(err, pgx.ErrNoRows) }
+
+// Close announces the restart to open event streams and ends them, before the HTTP server drains.
+func (s *Server) Close() { s.notices.shutdown() }

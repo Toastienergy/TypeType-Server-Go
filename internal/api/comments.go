@@ -46,6 +46,7 @@ func (s *Server) publicAccess(w http.ResponseWriter, r *http.Request) (string, b
 
 func (s *Server) commentRoutes(rt *Router) {
 	rt.Handle("GET", "/comments", s.comments("nextpage"))
+	rt.Handle("GET", "/comments/voice", s.commentVoice)
 	rt.Handle("GET", "/comments/replies", s.comments("repliesPage"))
 }
 

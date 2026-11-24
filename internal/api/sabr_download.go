@@ -66,14 +66,17 @@ func (t *dlTrack) boundary(p, parts int) (int, error) {
 // downloadSabr is SabrDownloadStreamer.stream over a session the request owns: the initialization of each track,
 // then the part's media segments of both tracks in play order. The pump follows the segment asked for, so the
 // session keeps the playback lead and back buffer and never holds the whole file.
-func downloadSabr(ctx context.Context, ss *sabr.Session, formats []*sabr.Format, part, parts int, out io.Writer, flush func()) error {
+// emit receives each frame; it returns an error to stop the download.
+type emitFunc func(kind byte, itag, seq int, data []byte) error
+
+func downloadSabr(ctx context.Context, ss *sabr.Session, formats []*sabr.Format, part, parts int, emit emitFunc) error {
 	tracks := make([]*dlTrack, 0, len(formats))
 	for _, f := range formats {
 		data, ok := ss.Init(ctx, f.Itag, 20*time.Second)
 		if !ok {
 			return errors.New("Missing SABR initialization for itag " + strconv.Itoa(f.Itag))
 		}
-		if err := writeFrame(out, frameInit, f.Itag, 0, data); err != nil {
+		if err := emit(frameInit, f.Itag, 0, data); err != nil {
 			return err
 		}
 		times := ss.Index(ctx, f.Itag, 20*time.Second)
@@ -93,7 +96,6 @@ func downloadSabr(ctx context.Context, ss *sabr.Session, formats []*sabr.Format,
 		}
 		tracks = append(tracks, t)
 	}
-	flush()
 	for {
 		var t *dlTrack
 		for _, c := range tracks {
@@ -112,17 +114,12 @@ func downloadSabr(ctx context.Context, ss *sabr.Session, formats []*sabr.Format,
 			}
 			return errors.New("SABR download stalled without receiving media")
 		}
-		if err := writeFrame(out, frameMedia, t.f.Itag, t.next, seg.Data()); err != nil {
+		if err := emit(frameMedia, t.f.Itag, t.next, seg.Data()); err != nil {
 			return err
 		}
 		t.next++
-		flush()
 	}
-	if err := writeFrame(out, frameComplete, 0, 0, nil); err != nil {
-		return err
-	}
-	flush()
-	return nil
+	return emit(frameComplete, 0, 0, nil)
 }
 
 // sabrDownload is /sabr/download/{videoId}: the manifest's access rules, a session of its own started at the part's
@@ -173,7 +170,13 @@ func (s *Server) sabrDownload(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	w.Write(sabrDownloadMagic)
 	rc := http.NewResponseController(w)
-	if err := downloadSabr(r.Context(), ss, formats, part, parts, w, func() { rc.Flush() }); err != nil && r.Context().Err() == nil {
+	emit := func(kind byte, itag, seq int, data []byte) error {
+		if err := writeFrame(w, kind, itag, seq, data); err != nil {
+			return err
+		}
+		return rc.Flush()
+	}
+	if err := downloadSabr(r.Context(), ss, formats, part, parts, emit); err != nil && r.Context().Err() == nil {
 		s.Log.Warn("sabr_download_failed", "videoId", videoID, "part", strconv.Itoa(part+1)+"/"+strconv.Itoa(parts), "reason", err.Error())
 	}
 }

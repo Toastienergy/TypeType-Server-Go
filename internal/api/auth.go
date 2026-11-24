@@ -1,7 +1,9 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strconv"
@@ -13,6 +15,8 @@ import (
 
 const refreshCookie = "refresh_token"
 
+const clientClosedRequest = 499
+
 func (s *Server) authRoutes(rt *Router) {
 	rt.Handle("GET", "/auth/register/status", s.registerStatus)
 	rt.Handle("POST", "/auth/register", s.register)
@@ -23,8 +27,13 @@ func (s *Server) authRoutes(rt *Router) {
 	rt.Handle("POST", "/auth/guest", s.guest)
 }
 
-// fail answers an unexpected error with the Kotlin 500 body and logs it.
+// fail answers an unexpected error with the Kotlin 500 body and logs it. A viewer who left mid-request gets the nginx
+// 499 instead, so leaving a page never counts as a server failure.
 func (s *Server) fail(w http.ResponseWriter, r *http.Request, err error) {
+	if errors.Is(r.Context().Err(), context.Canceled) {
+		w.WriteHeader(clientClosedRequest)
+		return
+	}
 	s.Log.Error("request failed", "requestId", httpx.RequestID(r.Context()), "path", r.URL.Path, "err", err)
 	httpx.Error(w, r, http.StatusInternalServerError, "Internal server error", "internal_error")
 }

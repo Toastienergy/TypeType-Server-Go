@@ -1,8 +1,10 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -53,10 +55,14 @@ func (s *Server) searchRoutes(rt *Router) {
 		var err error
 		switch svc {
 		case 0:
-			if sel.content.field == ytMusic || strings.HasPrefix(next, "ytm1.") {
-				page, err = s.YT.MusicSearch(r.Context(), q, sel.content.name, sel.content.music, next)
-			} else {
-				page, err = s.YT.Search(r.Context(), q, youtubeSP(sel.content, sel.sorts), next)
+			var f *extractFail
+			if page, f = s.cachedYoutubeSearch(r.Context(), q, sel, next); f != nil {
+				if f.bad {
+					plain(w, r, f.Status, f.Message)
+				} else {
+					httpx.Error(w, r, f.Status, f.Message, f.Code)
+				}
+				return
 			}
 		case 5:
 			if page, ok = s.bilibiliSearch(r.Context(), w, r, q, sel, next); !ok {
@@ -155,4 +161,39 @@ func (s *Server) searchRoutes(rt *Router) {
 		}
 		httpx.JSON(w, http.StatusOK, s.accessFor(r.Context(), user).filter(out))
 	}))
+}
+
+// cachedYoutubeSearch is CachedSearchService for YouTube: ten minutes for a first page, five for the next ones, an
+// empty first page kept 30 s at most.
+func (s *Server) cachedYoutubeSearch(ctx context.Context, q string, sel searchSelection, next string) (youtube.SearchPage, *extractFail) {
+	var sorts []string
+	for _, it := range sel.sorts {
+		sorts = append(sorts, it.name)
+	}
+	slices.Sort(sorts)
+	ttl := int64(600)
+	if next != "" {
+		ttl = 300
+	}
+	area := cacheArea[youtube.SearchPage]{name: "search", admit: func(p youtube.SearchPage) admission {
+		return firstPageAdmission(next, len(p.Items) == 0 && len(p.Playlists) == 0 && len(p.Channels) == 0, ttl)
+	}}
+	key := publicCacheKey("search-v4", append([]string{"0", q, next, sel.content.name}, sorts...)...)
+	return publicCached(s, ctx, area, key, func(ctx context.Context) (youtube.SearchPage, *extractFail) {
+		var page youtube.SearchPage
+		var err error
+		if sel.content.field == ytMusic || strings.HasPrefix(next, "ytm1.") {
+			page, err = s.YT.MusicSearch(ctx, q, sel.content.name, sel.content.music, next)
+		} else {
+			page, err = s.YT.Search(ctx, q, youtubeSP(sel.content, sel.sorts), next)
+		}
+		switch {
+		case errors.Is(err, youtube.ErrBadPage):
+			return page, &extractFail{Status: http.StatusBadRequest, Message: "Invalid page", bad: true}
+		case err != nil:
+			s.Log.Warn("search", "err", err)
+			return page, &extractFail{Status: http.StatusUnprocessableEntity, Message: "Search failed", Code: "error"}
+		}
+		return page, nil
+	})
 }

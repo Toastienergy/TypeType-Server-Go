@@ -2,15 +2,11 @@ package api
 
 import (
 	"context"
-	"errors"
-	"net"
 	"net/http"
 	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
-	"syscall"
-	"time"
 
 	"typetype.dev/server/internal/httpx"
 	"typetype.dev/server/internal/sabr"
@@ -101,11 +97,13 @@ type streamResponse struct {
 	PublishedAt                  *int64              `json:"publishedAt"`
 	IsLive                       bool                `json:"isLive"`
 	IsPostLive                   bool                `json:"isPostLive"`
-	IsLiveContent                bool                `json:"isLiveContent"`
-	HasLiveManifest              bool                `json:"hasLiveManifest"`
-	Collections                  []any               `json:"collections"`
-	Parts                        []any               `json:"parts"`
-	EndScreenElements            []any               `json:"endScreenElements"`
+	restriction                  *youtube.Restriction
+	tokenDown                    bool
+	IsLiveContent                bool  `json:"isLiveContent"`
+	HasLiveManifest              bool  `json:"hasLiveManifest"`
+	Collections                  []any `json:"collections"`
+	Parts                        []any `json:"parts"`
+	EndScreenElements            []any `json:"endScreenElements"`
 }
 
 var youtubeIDRe = regexp.MustCompile(`(?:[?&]v=|youtu\.be/|/shorts/|/embed/|/live/|/v/)([A-Za-z0-9_-]{11})`)
@@ -298,29 +296,12 @@ func (s *Server) youtubeStream(w http.ResponseWriter, r *http.Request, live bool
 			httpx.Error(w, r, http.StatusForbidden, "Video is blocked", "content_blocked")
 			return
 		}
-		ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
-		defer cancel()
-		infoc := make(chan *sabr.Info, 1)
-		var tokenDown bool
-		go func() {
-			in, err := s.Sabr.Token().Info(ctx, id)
-			if err != nil {
-				s.Log.Warn("stream sabr info", "videoId", id, "err", err)
-				var ne net.Error
-				tokenDown = errors.As(err, &ne) || errors.Is(err, syscall.ECONNREFUSED)
-			}
-			infoc <- in
-		}()
-		sbc := make(chan sponsorResult, 1)
-		go func() { sbc <- s.sponsor.segments(ctx, id) }()
-		watch, err := s.YT.FetchWatch(ctx, id)
-		in := <-infoc
-		if err != nil && in == nil {
-			s.Log.Warn("stream watch", "videoId", id, "err", err)
-			httpx.Error(w, r, http.StatusBadGateway, "Could not extract this video", "extraction_failed")
+		core, f := s.youtubeStreamCore(r.Context(), id, raw)
+		if f != nil {
+			httpx.Error(w, r, f.Status, f.Message, f.Code)
 			return
 		}
-		resp := buildStream(id, raw, watch, in)
+		resp := *core
 		if hidden(youtube.VideoItem{URL: raw, UploaderURL: resp.UploaderURL, UploaderName: resp.UploaderName}) {
 			httpx.Error(w, r, http.StatusForbidden, "Channel is blocked", "content_blocked")
 			return
@@ -336,16 +317,15 @@ func (s *Server) youtubeStream(w http.ResponseWriter, r *http.Request, live bool
 			httpx.JSON(w, http.StatusForbidden, b)
 			return
 		}
-		if watch != nil && watch.Related != nil {
-			resp.RelatedStreams = []youtube.VideoItem{}
-			for _, v := range access.filter(focus.filter(watch.Related)) {
+		if resp.RelatedStreams != nil {
+			related := []youtube.VideoItem{}
+			for _, v := range access.filter(focus.filter(resp.RelatedStreams)) {
 				if !hidden(v) {
-					resp.RelatedStreams = append(resp.RelatedStreams, v)
+					related = append(related, v)
 				}
 			}
+			resp.RelatedStreams = related
 		}
-		sb := <-sbc
-		resp.SponsorBlockSegments, resp.SponsorBlockAvailable = sb.segments, sb.available
 		if live {
 			if !resp.IsLive || resp.HlsURL == "" {
 				httpx.Error(w, r, http.StatusBadGateway, "No active YouTube live stream is available", "live_stream_unavailable")
@@ -357,12 +337,12 @@ func (s *Server) youtubeStream(w http.ResponseWriter, r *http.Request, live bool
 			resp.HlsURL = s.hlsPath(resp.HlsURL)
 		}
 		if len(resp.VideoOnlyStreams) == 0 && len(resp.AudioStreams) == 0 && len(resp.VideoStreams) == 0 && resp.HlsURL == "" {
-			if watch != nil && watch.Restriction != nil {
-				writeRestriction(w, r, watch.Restriction)
+			if resp.restriction != nil {
+				writeRestriction(w, r, resp.restriction)
 				return
 			}
 			w.Header().Set("Retry-After", "15")
-			if tokenDown {
+			if resp.tokenDown {
 				httpx.Error(w, r, http.StatusServiceUnavailable, "The token service could not get a YouTube token", "token_service_unavailable")
 			} else {
 				httpx.Error(w, r, http.StatusServiceUnavailable, "No compatible stream is available for this video", "no_playable_streams")

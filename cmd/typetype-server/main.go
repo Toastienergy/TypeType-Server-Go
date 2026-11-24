@@ -27,6 +27,7 @@ func main() {
 
 func run(log *slog.Logger) error {
 	start := time.Now()
+	startProfiling(log)
 	cfg, err := config.Load()
 	if err != nil {
 		return err

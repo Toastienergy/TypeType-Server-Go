@@ -1,0 +1,103 @@
+SubscriptionItem:
+  type: object
+  required: [channelUrl, name, avatarUrl, subscribedAt]
+  properties:
+    channelUrl: { type: string, minLength: 1 }
+    name: { type: string }
+    avatarUrl: { type: string }
+    subscribedAt: { type: integer, format: int64 }
+SubscriptionGroupMembershipItem:
+  type: object
+  required: [channelUrl, name, avatarUrl, subscribedAt, groupIds]
+  properties:
+    channelUrl: { type: string, minLength: 1 }
+    name: { type: string }
+    avatarUrl: { type: string }
+    subscribedAt: { type: integer, format: int64 }
+    groupIds:
+      type: array
+      uniqueItems: true
+      items: { type: string, format: uuid }
+SubscriptionMembershipPage:
+  type: object
+  required: [items, total, totalSubscriptions, ungroupedCount, page, limit]
+  properties:
+    items:
+      type: array
+      maxItems: 100
+      items: { $ref: '#/SubscriptionGroupMembershipItem' }
+    total: { type: integer, format: int64, minimum: 0, description: Number of subscriptions matching all filters. }
+    totalSubscriptions: { type: integer, format: int64, minimum: 0, description: Unfiltered account subscription count. }
+    ungroupedCount: { type: integer, format: int64, minimum: 0, description: Unfiltered account count with no memberships. }
+    page: { type: integer, minimum: 0, maximum: 1000000 }
+    limit: { type: integer, minimum: 1, maximum: 100 }
+SubscriptionCreateRequest:
+  type: object
+  required: [channelUrl, name, avatarUrl]
+  properties:
+    channelUrl: { type: string, minLength: 1 }
+    name: { type: string }
+    avatarUrl: { type: string }
+SubscriptionGroupItem:
+  type: object
+  required: [id, name, channelCount, createdAt, updatedAt]
+  properties:
+    id: { type: string, format: uuid }
+    name: { type: string, minLength: 1, maxLength: 100 }
+    channelCount: { type: integer, minimum: 0 }
+    createdAt: { type: integer, format: int64 }
+    updatedAt: { type: integer, format: int64 }
+SubscriptionGroupRequest:
+  type: object
+  required: [name]
+  properties:
+    name: { type: string, minLength: 1, maxLength: 100 }
+SubscriptionGroupMembershipRequest:
+  type: object
+  required: [channelUrl]
+  properties:
+    channelUrl: { type: string, minLength: 1, maxLength: 2048 }
+SubscriptionGroupMembershipBatchRequest:
+  type: object
+  required: [channelUrls]
+  properties:
+    channelUrls:
+      type: array
+      minItems: 1
+      maxItems: 500
+      items: { type: string, minLength: 1, maxLength: 2048 }
+SubscriptionFeedResponse:
+  type: object
+  required: [videos, nextpage, generation, generatedAt, refreshing]
+  properties:
+    videos:
+      type: array
+      maxItems: 100
+      items:
+        $ref: ./media.yaml#/VideoItem
+    nextpage:
+      type: string
+      nullable: true
+      description: Opaque continuation bound to this snapshot generation and page size.
+    generation:
+      type: integer
+      format: int64
+    generatedAt:
+      type: integer
+      format: int64
+      description: Unix timestamp in milliseconds for the snapshot build.
+    refreshing:
+      type: boolean
+      description: True while a stale snapshot is being rebuilt in the background.
+SubscriptionFeedPreparingResponse:
+  type: object
+  required: [code, retryAfterMs]
+  properties:
+    code:
+      type: string
+      enum: [subscription_feed_preparing]
+    retryAfterMs:
+      type: integer
+      format: int64
+      minimum: 100
+      maximum: 5000

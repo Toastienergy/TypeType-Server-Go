@@ -1,0 +1,322 @@
+YoutubeSabrStreams:
+  get:
+    tags: [extraction]
+    summary: Resolve YouTube playback metadata with HLS for live streams and SABR for VOD
+    parameters:
+      - name: url
+        in: query
+        required: true
+        schema: { type: string }
+    responses:
+      '200':
+        description: Live streams contain only an HLS manifest; VOD responses contain only SABR sources.
+        headers:
+          X-Request-ID:
+            $ref: ../components/common.yaml#/RequestIdHeader
+        content:
+          application/json:
+            schema:
+              $ref: ../components/streams.yaml#/StreamResponse
+      '400':
+        description: Invalid request or YouTube account connection required (`youtube_session_required`).
+        content:
+          application/json:
+            schema:
+              $ref: ../components/common.yaml#/ErrorResponse
+      '401':
+        $ref: ../components/common.yaml#/JsonError
+      '403':
+        $ref: ../components/common.yaml#/JsonError
+      '404':
+        description: YouTube reports that this video is unavailable.
+        headers:
+          X-Request-ID:
+            $ref: ../components/common.yaml#/RequestIdHeader
+        content:
+          application/json:
+            schema:
+              $ref: ../components/common.yaml#/ErrorResponse
+      '409':
+        description: The live event or premiere has not started yet.
+        headers:
+          X-Request-ID:
+            $ref: ../components/common.yaml#/RequestIdHeader
+        content:
+          application/json:
+            schema:
+              $ref: ../components/common.yaml#/ErrorResponse
+      '422':
+        $ref: ../components/common.yaml#/UnplayableContentError
+      '429':
+        $ref: ../components/common.yaml#/RetryableError
+      '502':
+        description: YouTube extraction failed for an unclassified upstream reason.
+        headers:
+          X-Request-ID:
+            $ref: ../components/common.yaml#/RequestIdHeader
+        content:
+          application/json:
+            schema:
+              $ref: ../components/common.yaml#/ErrorResponse
+      '503':
+        $ref: ../components/common.yaml#/RetryableError
+      '504':
+        $ref: ../components/common.yaml#/UpstreamTimeoutError
+YoutubeLiveHls:
+  get:
+    tags: [extraction]
+    summary: Resolve a known YouTube live stream directly to HLS
+    parameters:
+      - name: url
+        in: query
+        required: true
+        schema: { type: string }
+    responses:
+      '200':
+        description: Active live streams contain only an HLS manifest and no SABR or DASH sources.
+        headers:
+          X-Request-ID:
+            $ref: ../components/common.yaml#/RequestIdHeader
+        content:
+          application/json:
+            schema:
+              $ref: ../components/streams.yaml#/StreamResponse
+      '400':
+        $ref: ../components/common.yaml#/JsonError
+      '401':
+        $ref: ../components/common.yaml#/JsonError
+      '403':
+        $ref: ../components/common.yaml#/JsonError
+      '404':
+        description: YouTube reports that this video is unavailable.
+        headers:
+          X-Request-ID:
+            $ref: ../components/common.yaml#/RequestIdHeader
+        content:
+          application/json:
+            schema:
+              $ref: ../components/common.yaml#/ErrorResponse
+      '409':
+        description: The live event or premiere has not started yet.
+        headers:
+          X-Request-ID:
+            $ref: ../components/common.yaml#/RequestIdHeader
+        content:
+          application/json:
+            schema:
+              $ref: ../components/common.yaml#/ErrorResponse
+      '422':
+        $ref: ../components/common.yaml#/UnplayableContentError
+      '429':
+        $ref: ../components/common.yaml#/RetryableError
+      '502':
+        description: YouTube extraction failed for an unclassified upstream reason.
+        headers:
+          X-Request-ID:
+            $ref: ../components/common.yaml#/RequestIdHeader
+        content:
+          application/json:
+            schema:
+              $ref: ../components/common.yaml#/ErrorResponse
+      '503':
+        $ref: ../components/common.yaml#/RetryableError
+      '504':
+        $ref: ../components/common.yaml#/UpstreamTimeoutError
+YoutubeSabrBootstrap:
+  get:
+    tags: [extraction]
+    summary: Resolve early playback metadata with HLS for live streams and SABR formats for VOD
+    parameters:
+      - name: url
+        in: query
+        required: true
+        schema: { type: string }
+    responses:
+      '200':
+        description: Live streams contain only an HLS manifest; VOD responses contain only SABR sources.
+        headers:
+          X-Request-ID:
+            $ref: ../components/common.yaml#/RequestIdHeader
+        content:
+          application/json:
+            schema:
+              $ref: ../components/streams.yaml#/StreamResponse
+      '400':
+        description: Invalid request or YouTube account connection required (`youtube_session_required`).
+        content:
+          application/json:
+            schema:
+              $ref: ../components/common.yaml#/ErrorResponse
+      '401':
+        $ref: ../components/common.yaml#/JsonError
+      '403':
+        $ref: ../components/common.yaml#/JsonError
+      '404':
+        description: YouTube reports that this video is unavailable.
+        headers:
+          X-Request-ID:
+            $ref: ../components/common.yaml#/RequestIdHeader
+        content:
+          application/json:
+            schema:
+              $ref: ../components/common.yaml#/ErrorResponse
+      '409':
+        description: The live event or premiere has not started yet.
+        headers:
+          X-Request-ID:
+            $ref: ../components/common.yaml#/RequestIdHeader
+        content:
+          application/json:
+            schema:
+              $ref: ../components/common.yaml#/ErrorResponse
+      '422':
+        $ref: ../components/common.yaml#/UnplayableContentError
+      '429':
+        $ref: ../components/common.yaml#/RetryableError
+      '502':
+        description: YouTube extraction failed for an unclassified upstream reason.
+        headers:
+          X-Request-ID:
+            $ref: ../components/common.yaml#/RequestIdHeader
+        content:
+          application/json:
+            schema:
+              $ref: ../components/common.yaml#/ErrorResponse
+      '503':
+        $ref: ../components/common.yaml#/RetryableError
+      '504':
+        $ref: ../components/common.yaml#/UpstreamTimeoutError
+NicoNicoStreams:
+  get:
+    tags: [extraction]
+    summary: Extract NicoNico stream metadata
+    parameters:
+      - name: url
+        in: query
+        required: true
+        schema: { type: string }
+    responses:
+      '200':
+        description: NicoNico stream metadata containing no SABR sources.
+        content:
+          application/json:
+            schema:
+              $ref: ../components/streams.yaml#/StreamResponse
+      '400':
+        $ref: ../components/common.yaml#/JsonError
+      '401':
+        $ref: ../components/common.yaml#/JsonError
+      '403':
+        $ref: ../components/common.yaml#/JsonError
+      '422':
+        $ref: ../components/common.yaml#/UnplayableContentError
+      '429':
+        $ref: ../components/common.yaml#/RetryableError
+      '503':
+        $ref: ../components/common.yaml#/RetryableError
+      '504':
+        $ref: ../components/common.yaml#/UpstreamTimeoutError
+BiliBiliStreams:
+  get:
+    tags: [extraction]
+    summary: Extract BiliBili stream metadata
+    parameters:
+      - name: url
+        in: query
+        required: true
+        schema: { type: string }
+    responses:
+      '200':
+        description: BiliBili stream metadata with collections and multipart parts when available, containing no SABR sources.
+        content:
+          application/json:
+            schema:
+              $ref: ../components/streams.yaml#/StreamResponse
+      '400':
+        $ref: ../components/common.yaml#/JsonError
+      '401':
+        $ref: ../components/common.yaml#/JsonError
+      '403':
+        $ref: ../components/common.yaml#/JsonError
+      '422':
+        $ref: ../components/common.yaml#/UnplayableContentError
+      '429':
+        $ref: ../components/common.yaml#/RetryableError
+      '503':
+        $ref: ../components/common.yaml#/RetryableError
+      '504':
+        $ref: ../components/common.yaml#/UpstreamTimeoutError
+AudioOnly:
+  get:
+    tags: [extraction]
+    summary: Resolve a progressive audio-only media source
+    parameters:
+      - name: url
+        in: query
+        required: true
+        schema: { type: string }
+      - name: preferOriginal
+        in: query
+        required: false
+        schema: { type: boolean, default: false }
+      - name: preferredLocale
+        in: query
+        required: false
+        schema: { type: string }
+    responses:
+      '200':
+        description: Backend-owned progressive audio-only source.
+        headers:
+          X-Request-ID:
+            $ref: ../components/common.yaml#/RequestIdHeader
+        content:
+          application/json:
+            schema:
+              $ref: ../components/streams.yaml#/AudioOnlyStreamResponse
+      '400':
+        $ref: ../components/common.yaml#/JsonError
+      '401':
+        $ref: ../components/common.yaml#/JsonError
+      '403':
+        $ref: ../components/common.yaml#/JsonError
+      '422':
+        $ref: ../components/common.yaml#/JsonError
+AudioOnlySource:
+  get:
+    tags: [extraction]
+    summary: Stream a signed audio-only media source
+    parameters:
+      - name: token
+        in: query
+        required: true
+        schema: { type: string }
+      - name: Range
+        in: header
+        required: false
+        schema: { type: string }
+    responses:
+      '200':
+        description: Audio media response.
+        content:
+          audio/mp4:
+            schema: { type: string, format: binary }
+          audio/webm:
+            schema: { type: string, format: binary }
+      '206':
+        description: Partial audio media response.
+        headers:
+          Content-Range:
+            schema: { type: string }
+          Accept-Ranges:
+            schema: { type: string }
+        content:
+          audio/mp4:
+            schema: { type: string, format: binary }
+          audio/webm:
+            schema: { type: string, format: binary }
+      '400':
+        $ref: ../components/common.yaml#/JsonError
+      '401':
+        $ref: ../components/common.yaml#/JsonError
+      '422':
+        $ref: ../components/common.yaml#/JsonError

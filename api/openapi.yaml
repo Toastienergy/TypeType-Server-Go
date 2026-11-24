@@ -1,0 +1,288 @@
+openapi: 3.0.3
+info:
+  title: TypeType Server API
+  version: 0.1.0
+  description: Manual API contract for TypeType-Server. This file is maintained by hand and is not generated.
+servers:
+  - url: http://localhost:8080
+    description: Local server
+  - url: https://watch.eltux.fr/api
+    description: Production frontend proxy
+tags:
+  - name: health
+  - name: metadata
+  - name: extraction
+  - name: playback
+  - name: downloader
+  - name: youtube-session
+  - name: user-data
+  - name: rss
+  - name: portability
+paths:
+  /health: { $ref: ./openapi/paths/health.yaml#/Health }
+  /instance: { $ref: ./openapi/paths/metadata.yaml#/Instance }
+  /server/events: { $ref: ./openapi/paths/server-events.yaml#/ServerEvents }
+  /admin/server/notice: { $ref: ./openapi/paths/server-events.yaml#/AdminServerNotice }
+  /streams/youtube/sabr: { $ref: ./openapi/paths/streams.yaml#/YoutubeSabrStreams }
+  /streams/youtube/live: { $ref: ./openapi/paths/streams.yaml#/YoutubeLiveHls }
+  /streams/youtube/sabr/bootstrap: { $ref: ./openapi/paths/streams.yaml#/YoutubeSabrBootstrap }
+  /streams/niconico: { $ref: ./openapi/paths/streams.yaml#/NicoNicoStreams }
+  /streams/bilibili: { $ref: ./openapi/paths/streams.yaml#/BiliBiliStreams }
+  /streams/audio-only: { $ref: ./openapi/paths/streams.yaml#/AudioOnly }
+  /streams/audio-only/source: { $ref: ./openapi/paths/streams.yaml#/AudioOnlySource }
+  /subtitles/youtube/{videoId}: { $ref: ./openapi/paths/subtitles.yaml#/YoutubeSubtitle }
+  /proxy: { $ref: ./openapi/paths/proxy.yaml#/Proxy }
+  /media/{handle}: { $ref: ./openapi/paths/media.yaml#/ProviderMedia }
+  /sabr/download/{videoId}: { $ref: ./openapi/paths/sabr-download.yaml#/SabrDownload }
+  /sabr/playback/{videoId}: { $ref: ./openapi/paths/sabr-playback.yaml#/SabrPlaybackCreate }
+  /sabr/playback/{sessionId}: { $ref: ./openapi/paths/sabr-playback.yaml#/SabrPlaybackRelease }
+  /sabr/playback/{sessionId}/position: { $ref: ./openapi/paths/sabr-playback.yaml#/SabrPlaybackPosition }
+  /sabr/playback/{sessionId}/window: { $ref: ./openapi/paths/sabr-playback.yaml#/SabrPlaybackWindow }
+  /sabr/playback/{sessionId}/prefetch: { $ref: ./openapi/paths/sabr-playback.yaml#/SabrPlaybackPrefetch }
+  /sabr/playback/{sessionId}/segments: { $ref: ./openapi/paths/sabr-playback.yaml#/SabrPlaybackSegments }
+  /search: { $ref: ./openapi/paths/search.yaml#/Search }
+  /search/filters: { $ref: ./openapi/paths/search.yaml#/SearchFilters }
+  /live-chat: { $ref: ./openapi/paths/live-chat.yaml#/YoutubeLiveChat }
+  /channel: { $ref: ./openapi/paths/channel.yaml#/Channel }
+  /channel/page: { $ref: ./openapi/paths/channel.yaml#/ChannelPage }
+  /channel/playlists: { $ref: ./openapi/paths/channel.yaml#/ChannelPlaylists }
+  /channel/posts: { $ref: ./openapi/paths/channel.yaml#/ChannelPosts }
+  /podcasts: { $ref: ./openapi/paths/podcasts.yaml#/Podcasts }
+  /podcasts/episodes: { $ref: ./openapi/paths/podcasts.yaml#/PodcastEpisodes }
+  /favorites/status: { $ref: ./openapi/paths/favorites.yaml#/FavoriteStatus }
+  /playlist: { $ref: ./openapi/paths/playlists.yaml#/Playlist }
+  /saved-playlists: { $ref: ./openapi/paths/saved-playlists.yaml#/SavedPlaylists }
+  /saved-playlists/{id}: { $ref: ./openapi/paths/saved-playlists.yaml#/SavedPlaylist }
+  /subscriptions: { $ref: ./openapi/paths/subscriptions.yaml#/Subscriptions }
+  /subscriptions/group-memberships: { $ref: ./openapi/paths/subscriptions.yaml#/SubscriptionGroupMemberships }
+  /subscriptions/group-memberships/page: { $ref: ./openapi/paths/subscription-membership-pages.yaml#/Page }
+  /subscriptions/group-memberships/lookup: { $ref: ./openapi/paths/subscription-membership-pages.yaml#/Lookup }
+  /subscriptions/groups: { $ref: ./openapi/paths/subscriptions.yaml#/SubscriptionGroups }
+  /subscriptions/groups/{groupId}: { $ref: ./openapi/paths/subscriptions.yaml#/SubscriptionGroup }
+  /subscriptions/groups/{groupId}/channels: { $ref: ./openapi/paths/subscriptions.yaml#/SubscriptionGroupChannels }
+  /subscriptions/feed: { $ref: ./openapi/paths/subscriptions.yaml#/SubscriptionFeed }
+  /focus: { $ref: ./openapi/paths/focus.yaml#/Focus }
+  /focus/study-channels: { $ref: ./openapi/paths/focus.yaml#/FocusStudyChannels }
+  /auth/device/start: { $ref: ./openapi/paths/device-auth.yaml#/DeviceStart }
+  /auth/device/lookup: { $ref: ./openapi/paths/device-auth.yaml#/DeviceLookup }
+  /auth/device/approve: { $ref: ./openapi/paths/device-auth.yaml#/DeviceApprove }
+  /auth/device/deny: { $ref: ./openapi/paths/device-auth.yaml#/DeviceDeny }
+  /auth/device/token: { $ref: ./openapi/paths/device-auth.yaml#/DeviceToken }
+  /profiles: { $ref: ./openapi/paths/profiles.yaml#/AccountProfiles }
+  /profiles/{profileId}: { $ref: ./openapi/paths/profiles.yaml#/AccountProfile }
+  /profiles/{profileId}/default: { $ref: ./openapi/paths/profiles.yaml#/AccountProfileDefault }
+  /profiles/{profileId}/switch: { $ref: ./openapi/paths/profiles.yaml#/AccountProfileSwitch }
+  /notifications: { $ref: ./openapi/paths/notifications.yaml#/Notifications }
+  /notifications/unread-count: { $ref: ./openapi/paths/notifications.yaml#/NotificationsUnreadCount }
+  /notifications/read-all: { $ref: ./openapi/paths/notifications.yaml#/NotificationsReadAll }
+  /notifications/{notificationId}/read: { $ref: ./openapi/paths/notifications.yaml#/NotificationsRead }
+  /notifications/channel-preferences: { $ref: ./openapi/paths/push-notifications.yaml#/ChannelNotificationPreferences }
+  /notifications/channel-preferences/bulk: { $ref: ./openapi/paths/push-notifications.yaml#/ChannelNotificationPreferencesBulk }
+  /notifications/push/devices: { $ref: ./openapi/paths/push-notifications.yaml#/PushDevices }
+  /notifications/push/devices/{deviceId}: { $ref: ./openapi/paths/push-notifications.yaml#/PushDevice }
+  /notifications/push/deliveries/acknowledgement: { $ref: ./openapi/paths/push-notifications.yaml#/PushDeliveryAcknowledgement }
+  /rss/feeds: { $ref: ./openapi/paths/rss.yaml#/RssFeeds }
+  /rss/feeds/{id}: { $ref: ./openapi/paths/rss.yaml#/RssFeed }
+  /rss/feeds/{id}/enabled: { $ref: ./openapi/paths/rss.yaml#/RssFeedEnabled }
+  /rss/feeds/{id}/regenerate: { $ref: ./openapi/paths/rss.yaml#/RssFeedRegenerate }
+  /rss/feeds/{id}.xml: { $ref: ./openapi/paths/rss.yaml#/RssFeedDocument }
+  /settings: { $ref: ./openapi/paths/access-control.yaml#/Settings }
+  /progress/batch: { $ref: ./openapi/paths/progress.yaml#/ProgressBatch }
+  /videos/titles: { $ref: ./openapi/paths/video-titles.yaml#/VideoTitles }
+  /presence/keys: { $ref: ./openapi/paths/presence.yaml#/PresenceKeys }
+  /presence/keys/{id}: { $ref: ./openapi/paths/presence.yaml#/PresenceKeyRoute }
+  /presence/now-playing: { $ref: ./openapi/paths/presence.yaml#/PresenceNowPlaying }
+  /backup/typetype: { $ref: ./openapi/paths/user-backup.yaml#/TypeTypeBackup }
+  /restore/typetype: { $ref: ./openapi/paths/user-backup.yaml#/TypeTypeRestore }
+  /portability/formats: { $ref: ./openapi/paths/portability.yaml#/PortabilityFormats }
+  /portability/imports: { $ref: ./openapi/paths/portability.yaml#/PortabilityImports }
+  /portability/exports: { $ref: ./openapi/paths/portability.yaml#/PortabilityExports }
+  /portability/jobs/{id}: { $ref: ./openapi/paths/portability.yaml#/PortabilityJob }
+  /portability/jobs/{id}/apply: { $ref: ./openapi/paths/portability.yaml#/PortabilityApply }
+  /portability/jobs/{id}/cancel: { $ref: ./openapi/paths/portability.yaml#/PortabilityCancel }
+  /portability/jobs/{id}/report: { $ref: ./openapi/paths/portability.yaml#/PortabilityReport }
+  /portability/jobs/{id}/artifact: { $ref: ./openapi/paths/portability.yaml#/PortabilityArtifact }
+  /blocked/keywords: { $ref: ./openapi/paths/user-backup.yaml#/BlockedKeywords }
+  /blocked/keywords/{keyword}: { $ref: ./openapi/paths/user-backup.yaml#/BlockedKeyword }
+  /allowed/channels: { $ref: ./openapi/paths/access-control.yaml#/AllowedChannels }
+  /allowed/channels/{channelUrl}: { $ref: ./openapi/paths/access-control.yaml#/AllowedChannel }
+  /admin/settings: { $ref: ./openapi/paths/access-control.yaml#/AdminSettings }
+  /twitch/streams: { $ref: ./openapi/paths/twitch.yaml#/Streams }
+  /twitch/games: { $ref: ./openapi/paths/twitch.yaml#/Games }
+  /twitch/games/{slug}/streams: { $ref: ./openapi/paths/twitch.yaml#/GameStreams }
+  /twitch/tags/{tag}/streams: { $ref: ./openapi/paths/twitch.yaml#/TagStreams }
+  /twitch/videos/{id}/comments: { $ref: ./openapi/paths/twitch.yaml#/VideoComments }
+  /twitch/videos/{id}/chapters: { $ref: ./openapi/paths/twitch.yaml#/VideoChapters }
+  /links/b23/{code}: { $ref: ./openapi/paths/short-links.yaml#/BilibiliShortLink }
+  /twitch/channels/{login}: { $ref: ./openapi/paths/twitch.yaml#/Channel }
+  /twitch/channels/{login}/videos: { $ref: ./openapi/paths/twitch.yaml#/ChannelVideos }
+  /twitch/channels/{login}/clips: { $ref: ./openapi/paths/twitch.yaml#/ChannelClips }
+  /twitch/live/{login}: { $ref: ./openapi/paths/twitch.yaml#/Live }
+  /twitch/videos/{id}: { $ref: ./openapi/paths/twitch.yaml#/Video }
+  /twitch/clips/{slug}: { $ref: ./openapi/paths/twitch.yaml#/Clip }
+  /twitch/search: { $ref: ./openapi/paths/twitch.yaml#/Search }
+  /twitch/account: { $ref: ./openapi/paths/twitch.yaml#/Account }
+  /twitch/account/device: { $ref: ./openapi/paths/twitch.yaml#/AccountDevice }
+  /twitch/account/poll: { $ref: ./openapi/paths/twitch.yaml#/AccountPoll }
+  /twitch/me/live: { $ref: ./openapi/paths/twitch.yaml#/MeLive }
+  /twitch/me/videos: { $ref: ./openapi/paths/twitch.yaml#/MeVideos }
+  /twitch/me/follows: { $ref: ./openapi/paths/twitch.yaml#/MeFollows }
+  /twitch/me/follows/{login}: { $ref: ./openapi/paths/twitch.yaml#/MeFollow }
+  /twitch/me/emotes/{login}: { $ref: ./openapi/paths/twitch.yaml#/MeEmotes }
+  /twitch/chat/assets: { $ref: ./openapi/paths/twitch.yaml#/ChatAssets }
+  /twitch/chat/{login}/assets: { $ref: ./openapi/paths/twitch.yaml#/ChannelChatAssets }
+  /twitch/chat/{login}/events: { $ref: ./openapi/paths/twitch.yaml#/ChatEvents }
+  /twitch/chat/{login}/highlights: { $ref: ./openapi/paths/twitch.yaml#/ChatHighlights }
+  /twitch/chat/{login}/messages: { $ref: ./openapi/paths/twitch.yaml#/ChatMessages }
+  /twitch/polls/vote: { $ref: ./openapi/paths/twitch.yaml#/PollVote }
+  /recommendations/home: { $ref: ./openapi/paths/recommender.yaml#/HomeRecommendations }
+  /recommendations/algorithms: { $ref: ./openapi/paths/recommender.yaml#/RecommenderAlgorithms }
+  /recommendations/settings: { $ref: ./openapi/paths/recommender.yaml#/RecommenderSettings }
+  /recommendations/profile: { $ref: ./openapi/paths/recommender.yaml#/RecommenderProfile }
+  /recommendations/data: { $ref: ./openapi/paths/recommender.yaml#/RecommenderData }
+  /recommendations/last-home: { $ref: ./openapi/paths/recommender.yaml#/RecommenderLastHome }
+  /recommendations/feedback: { $ref: ./openapi/paths/recommender.yaml#/RecommenderFeedback }
+  /recommendations/feedback/{id}: { $ref: ./openapi/paths/recommender.yaml#/RecommenderFeedbackEntry }
+  /admin/recommender/status: { $ref: ./openapi/paths/recommender-admin.yaml#/AdminRecommenderStatus }
+  /admin/recommender/feedback: { $ref: ./openapi/paths/recommender-admin.yaml#/AdminRecommenderFeedback }
+  /admin/rss/feeds: { $ref: ./openapi/paths/rss-admin.yaml#/AdminRssFeeds }
+  /admin/rss/feeds/{id}/enabled: { $ref: ./openapi/paths/rss-admin.yaml#/AdminRssFeedEnabled }
+  /admin/rss/feeds/{id}: { $ref: ./openapi/paths/rss-admin.yaml#/AdminRssFeed }
+  /admin/rss/users/{id}/enabled: { $ref: ./openapi/paths/rss-admin.yaml#/AdminRssUserEnabled }
+  /admin/users: { $ref: ./openapi/paths/admin-users.yaml#/AdminUsers }
+  /admin/users/{id}/access-mode: { $ref: ./openapi/paths/admin-users.yaml#/AdminUserAccessMode }
+  /admin/users/managed-access: { $ref: ./openapi/paths/admin-managed-access.yaml#/AdminManagedAccessUsers }
+  /admin/users/search: { $ref: ./openapi/paths/admin-allow-list.yaml#/AdminUsersSearch }
+  /admin/users/{id}/allow-list: { $ref: ./openapi/paths/admin-allow-list.yaml#/AdminUserAllowList }
+  /admin/users/{id}/allowed/channels: { $ref: ./openapi/paths/admin-allow-list.yaml#/AdminUserAllowedChannels }
+  /admin/users/{id}/allowed/channels/{channelUrl}: { $ref: ./openapi/paths/admin-allow-list.yaml#/AdminUserAllowedChannel }
+  /admin/allowed/playlists: { $ref: ./openapi/paths/admin-allow-list.yaml#/AdminAllowedPlaylists }
+  /admin/allowed/playlists/{playlistUrl}: { $ref: ./openapi/paths/admin-allow-list.yaml#/AdminAllowedPlaylist }
+  /admin/users/{id}/allowed/playlists: { $ref: ./openapi/paths/admin-allow-list.yaml#/AdminUserAllowedPlaylists }
+  /admin/users/{id}/allowed/playlists/{playlistUrl}: { $ref: ./openapi/paths/admin-allow-list.yaml#/AdminUserAllowedPlaylist }
+  /comments:
+    $ref: ./openapi/paths/comments.yaml#/Comments
+  /comments/replies:
+    $ref: ./openapi/paths/comments.yaml#/Replies
+  /comments/voice:
+    $ref: ./openapi/paths/comments.yaml#/Voice
+  /downloader/health:
+    $ref: ./openapi/paths/downloader.yaml#/Health
+  /downloader/health/deep:
+    $ref: ./openapi/paths/downloader.yaml#/DeepHealth
+  /downloader/jobs:
+    $ref: ./openapi/paths/downloader.yaml#/Jobs
+  /downloader/jobs/{id}:
+    $ref: ./openapi/paths/downloader.yaml#/Job
+  /downloader/jobs/{id}/events:
+    $ref: ./openapi/paths/downloader.yaml#/JobEvents
+  /downloader/jobs/{id}/artifact:
+    $ref: ./openapi/paths/downloader.yaml#/JobArtifact
+  /downloader/jobs/{id}/cancel:
+    $ref: ./openapi/paths/downloader.yaml#/JobCancel
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    ErrorResponse:
+      $ref: ./openapi/components/common.yaml#/ErrorResponse
+    HealthResponse:
+      $ref: ./openapi/components/common.yaml#/HealthResponse
+    InstanceMinClientVersion:
+      $ref: ./openapi/components/instance.yaml#/InstanceMinClientVersion
+    InstanceResponse:
+      $ref: ./openapi/components/instance.yaml#/InstanceResponse
+    StreamResponse:
+      $ref: ./openapi/components/streams.yaml#/StreamResponse
+    AudioOnlyStreamResponse:
+      $ref: ./openapi/components/streams.yaml#/AudioOnlyStreamResponse
+    SubtitleItem:
+      $ref: ./openapi/components/streams.yaml#/SubtitleItem
+    SabrPlaybackPositionRequest:
+      $ref: ./openapi/components/sabr-playback.yaml#/SabrPlaybackPositionRequest
+    SabrPlaybackWindowRequest:
+      $ref: ./openapi/components/sabr-playback.yaml#/SabrPlaybackWindowRequest
+    SearchPageResponse:
+      $ref: ./openapi/components/media.yaml#/SearchPageResponse
+    SearchFilterOption:
+      $ref: ./openapi/components/media.yaml#/SearchFilterOption
+    SearchFilterGroup:
+      $ref: ./openapi/components/media.yaml#/SearchFilterGroup
+    SearchFiltersResponse:
+      $ref: ./openapi/components/media.yaml#/SearchFiltersResponse
+    ChannelResultItem:
+      $ref: ./openapi/components/media.yaml#/ChannelResultItem
+    ChannelResponse:
+      $ref: ./openapi/components/media.yaml#/ChannelResponse
+    ChannelPageRequest:
+      $ref: ./openapi/components/media.yaml#/ChannelPageRequest
+    ChannelPlaylistsResponse:
+      $ref: ./openapi/components/media.yaml#/ChannelPlaylistsResponse
+    PlaylistResultItem:
+      $ref: ./openapi/components/media.yaml#/PlaylistResultItem
+    PodcastPageResponse:
+      $ref: ./openapi/components/media.yaml#/PodcastPageResponse
+    PodcastEpisodesResponse:
+      $ref: ./openapi/components/media.yaml#/PodcastEpisodesResponse
+    PublicPlaylistResponse:
+      $ref: ./openapi/components/media.yaml#/PublicPlaylistResponse
+    PublicPlaylistItem:
+      $ref: ./openapi/components/media.yaml#/PublicPlaylistItem
+    SavedPlaylistItem: { $ref: ./openapi/components/media.yaml#/SavedPlaylistItem }
+    SavedPlaylistRequest: { $ref: ./openapi/components/media.yaml#/SavedPlaylistRequest }
+    SubscriptionItem: { $ref: ./openapi/components/subscriptions.yaml#/SubscriptionItem }
+    SubscriptionGroupMembershipItem: { $ref: ./openapi/components/subscriptions.yaml#/SubscriptionGroupMembershipItem }
+    SubscriptionGroupItem: { $ref: ./openapi/components/subscriptions.yaml#/SubscriptionGroupItem }
+    SubscriptionGroupRequest: { $ref: ./openapi/components/subscriptions.yaml#/SubscriptionGroupRequest }
+    SubscriptionGroupMembershipRequest: { $ref: ./openapi/components/subscriptions.yaml#/SubscriptionGroupMembershipRequest }
+    SubscriptionGroupMembershipBatchRequest: { $ref: ./openapi/components/subscriptions.yaml#/SubscriptionGroupMembershipBatchRequest }
+    SubscriptionFeedResponse: { $ref: ./openapi/components/subscriptions.yaml#/SubscriptionFeedResponse }
+    SubscriptionFeedPreparingResponse: { $ref: ./openapi/components/subscriptions.yaml#/SubscriptionFeedPreparingResponse }
+    DeviceStartRequest: { $ref: ./openapi/components/device-auth.yaml#/DeviceStartRequest }
+    DeviceStartResponse: { $ref: ./openapi/components/device-auth.yaml#/DeviceStartResponse }
+    DeviceUserCodeRequest: { $ref: ./openapi/components/device-auth.yaml#/DeviceUserCodeRequest }
+    DeviceLookupResponse: { $ref: ./openapi/components/device-auth.yaml#/DeviceLookupResponse }
+    DeviceTokenRequest: { $ref: ./openapi/components/device-auth.yaml#/DeviceTokenRequest }
+    AccountProfileItem: { $ref: ./openapi/components/profiles.yaml#/AccountProfileItem }
+    AccountProfilesResponse: { $ref: ./openapi/components/profiles.yaml#/AccountProfilesResponse }
+    ProfileNameRequest: { $ref: ./openapi/components/profiles.yaml#/ProfileNameRequest }
+    ProfileSwitchResponse: { $ref: ./openapi/components/profiles.yaml#/ProfileSwitchResponse }
+    NotificationItem: { $ref: ./openapi/components/notifications.yaml#/NotificationItem }
+    NotificationsResponse: { $ref: ./openapi/components/notifications.yaml#/NotificationsResponse }
+    UnreadCountResponse: { $ref: ./openapi/components/notifications.yaml#/UnreadCountResponse }
+    MarkNotificationsReadResponse: { $ref: ./openapi/components/notifications.yaml#/MarkNotificationsReadResponse }
+    PushNotificationCapability: { $ref: ./openapi/components/instance.yaml#/PushNotificationCapability }
+    PushDeviceRegistrationRequest: { $ref: ./openapi/components/push-notifications.yaml#/PushDeviceRegistrationRequest }
+    PushDeviceRegistrationResponse: { $ref: ./openapi/components/push-notifications.yaml#/PushDeviceRegistrationResponse }
+    PushDeliveryAcknowledgementRequest: { $ref: ./openapi/components/push-notifications.yaml#/PushDeliveryAcknowledgementRequest }
+    ChannelNotificationPreferenceRequest: { $ref: ./openapi/components/push-notifications.yaml#/ChannelNotificationPreferenceRequest }
+    ChannelNotificationPreference: { $ref: ./openapi/components/push-notifications.yaml#/ChannelNotificationPreference }
+    UnifiedPushNotificationPayload: { $ref: ./openapi/components/push-notifications.yaml#/UnifiedPushNotificationPayload }
+    RssFeedRequest: { $ref: ./openapi/components/rss.yaml#/RssFeedRequest }
+    RssFeedItem: { $ref: ./openapi/components/rss.yaml#/RssFeedItem }
+    RssFeedSecretItem: { $ref: ./openapi/components/rss.yaml#/RssFeedSecretItem }
+    AdminRssFeedsPage: { $ref: ./openapi/components/rss.yaml#/AdminRssFeedsPage }
+    SettingsItem: { $ref: ./openapi/components/access-control.yaml#/SettingsItem }
+    ProgressItem: { $ref: ./openapi/components/progress.yaml#/ProgressItem }
+    ProgressBatchRequest: { $ref: ./openapi/components/progress.yaml#/ProgressBatchRequest }
+    TypeTypeBackupItem: { $ref: ./openapi/components/user-backup.yaml#/TypeTypeBackupItem }
+    TypeTypeRestoreSummary: { $ref: ./openapi/components/user-backup.yaml#/TypeTypeRestoreSummary }
+    PortabilityAdapterDescriptor: { $ref: ./openapi/components/portability.yaml#/PortabilityAdapterDescriptor }
+    PortabilityJobSnapshot: { $ref: ./openapi/components/portability.yaml#/PortabilityJobSnapshot }
+    PortabilityJobReport: { $ref: ./openapi/components/portability.yaml#/PortabilityJobReport }
+    PortabilityImportRequest: { $ref: ./openapi/components/portability.yaml#/PortabilityImportRequest }
+    PortabilityExportRequest: { $ref: ./openapi/components/portability.yaml#/PortabilityExportRequest }
+    BlockedKeywordItem: { $ref: ./openapi/components/user-backup.yaml#/BlockedKeywordItem }
+    AdminSettingsItem: { $ref: ./openapi/components/access-control.yaml#/AdminSettingsItem }
+    RecommenderCapability: { $ref: ./openapi/components/recommender.yaml#/RecommenderCapability }
+    RecommenderSettingsItem: { $ref: ./openapi/components/recommender.yaml#/RecommenderSettingsItem }
+    HomeRecommendationsResponse: { $ref: ./openapi/components/recommender.yaml#/HomeRecommendationsResponse }
+    AllowedChannelItem: { $ref: ./openapi/components/access-control.yaml#/AllowedChannelItem }
+    CommentsPageResponse: { $ref: ./openapi/components/media.yaml#/CommentsPageResponse }
+    DownloadJob: { $ref: ./openapi/components/downloader.yaml#/DownloadJob }
+    YoutubeRemoteBrowserStartRequest: { $ref: ./openapi/components/youtube-session.yaml#/YoutubeRemoteBrowserStartRequest }
+    YoutubeRemoteBrowserStartResponse: { $ref: ./openapi/components/youtube-session.yaml#/YoutubeRemoteBrowserStartResponse }
+    YoutubeRemoteBrowserCompleteRequest: { $ref: ./openapi/components/youtube-session.yaml#/YoutubeRemoteBrowserCompleteRequest }

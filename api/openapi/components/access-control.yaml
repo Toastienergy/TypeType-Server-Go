@@ -1,0 +1,153 @@
+SettingsItem:
+  type: object
+  properties:
+    defaultService: { type: integer, default: 0 }
+    defaultQuality: { type: string, default: 1080p }
+    defaultPlaybackSpeed:
+      type: number
+      format: double
+      minimum: 0.25
+      maximum: 4
+      default: 1
+    holdPlaybackSpeed:
+      type: number
+      format: double
+      enum: [1.5, 2, 2.5, 3, 4]
+      default: 2
+      description: Playback speed while Space or a touch is held.
+    defaultLandingPage: { type: string, default: home }
+    videoGridColumns:
+      type: integer
+      enum: [0, 4, 5, 6]
+      default: 0
+    relatedVideoSize: { type: string, enum: [default, large], default: default }
+    autoplay: { type: boolean, default: true }
+    autoplayOnOpen: { type: boolean, default: true }
+    playerEngine: { type: string, enum: [vidstack, videojs], default: videojs, description: Web player engine. Video.js is optional during the migration. }
+    hideWatchedSubscriptionVideos: { type: boolean, default: false, description: Clients hide watched videos from the subscription feed. }
+    watchedThresholdPercent: { type: integer, minimum: 0, maximum: 100, default: 0, description: Percent of a video after which clients count it as watched. 0 keeps the default rule, the last minute or 90 percent of a video shorter than a minute. Other values are 50 to 100. }
+    miniPlayerEnabled: { type: boolean, default: true, description: The web keeps playing in a mini player after leaving the watch page. }
+    hideSearchShorts: { type: boolean, default: true, description: Clients leave Shorts out of search results. The Shorts page stays available. }
+    autoplayCountdownSeconds:
+      type: integer
+      minimum: 0
+      maximum: 60
+      default: 10
+    volume: { type: number, format: double, default: 1.0 }
+    hideUpcomingPlaylistVideos:
+      type: boolean
+      default: false
+      description: Hide upcoming playlist titles and thumbnails by default.
+    ambientLight:
+      type: boolean
+      default: false
+      description: Light the page around the player with the colors of the video.
+    ambientLightSpread:
+      type: integer
+      minimum: 0
+      maximum: 200
+      default: 100
+      description: How far the ambient light reaches around the player, in percent of the player size.
+    ambientLightBlur:
+      type: integer
+      minimum: 0
+      maximum: 100
+      default: 50
+    ambientLightBrightness:
+      type: integer
+      minimum: 50
+      maximum: 150
+      default: 100
+    muted: { type: boolean, default: false }
+    notificationPopupsEnabled: { type: boolean, default: true }
+    subtitlesEnabled: { type: boolean, default: false }
+    defaultSubtitleLanguage: { type: string, default: "" }
+    defaultAudioLanguage: { type: string, default: "" }
+    captionStyles: { type: object, additionalProperties: true }
+    preferOriginalLanguage: { type: boolean, default: false }
+    enableHighQualityPlayback: { type: boolean, default: false }
+    sponsorBlockMode: { type: string, default: auto_skip }
+    sponsorBlockCategoryActions: { type: object, additionalProperties: { type: string } }
+    sponsorBlockMinimumDuration: { type: integer, default: 0 }
+    sponsorBlockShowCurrentSegment: { type: boolean, default: true }
+    sponsorBlockShowChapters: { type: boolean, default: false }
+    sponsorBlockShowFullVideoLabels: { type: boolean, default: true }
+    sponsorBlockManualSkipOnFullVideo: { type: boolean, default: true }
+    sponsorBlockSkipNonMusicOnlyOnMusicVideos: { type: boolean, default: false }
+    sponsorBlockMuteInsteadOfSkip: { type: boolean, default: false }
+    hideHomeRecommendations: { type: boolean, default: false }
+    hideContinueWatching: { type: boolean, default: false }
+    hideRelatedVideos: { type: boolean, default: false }
+    hideEndScreens: { type: boolean, default: false }
+    hideComments: { type: boolean, default: false }
+    hideShorts: { type: boolean, default: false }
+    hideSubscriptionLiveStreams: { type: boolean, default: false }
+    hideMembersOnlyContent: { type: boolean, default: false }
+    accessMode:
+      type: string
+      enum: [unrestricted, allow_list]
+      default: unrestricted
+    rssEnabled: { type: boolean, default: false }
+    rssPublicBaseUrl: { type: string, format: uri, nullable: true }
+    rssMaxFeedsPerUser: { type: integer, minimum: 1, maximum: 100, default: 10 }
+    rssMaxItems: { type: integer, minimum: 1, maximum: 200, default: 50 }
+    rssMinimumPollMinutes: { type: integer, minimum: 1, maximum: 1440, default: 5 }
+    rssRateLimitPerMinute: { type: integer, minimum: 1, maximum: 600, default: 30 }
+AllowedChannelItem:
+  type: object
+  required: [url]
+  properties:
+    url: { type: string }
+    name: { type: string, nullable: true }
+    thumbnailUrl: { type: string, nullable: true }
+    allowedAt: { type: integer, format: int64, default: 0 }
+    global: { type: boolean, nullable: true }
+AllowedPlaylistItem:
+  type: object
+  required: [url]
+  properties:
+    url: { type: string }
+    title: { type: string, nullable: true }
+    thumbnailUrl: { type: string, nullable: true }
+    uploaderName: { type: string, nullable: true }
+    allowedAt: { type: integer, format: int64, default: 0 }
+    global: { type: boolean, nullable: true }
+AdminSettingsItem:
+  type: object
+  properties:
+    name: { type: string }
+    tagline: { type: string, nullable: true }
+    logoUrl: { type: string, nullable: true }
+    bannerUrl: { type: string, nullable: true }
+    minAndroidClientVersion: { type: string, nullable: true }
+    allowRegistration: { type: boolean, default: true }
+    allowGuest: { type: boolean, default: true }
+    forceEmailVerification: { type: boolean, default: false }
+    activeSessionsEnabled: { type: boolean, default: false }
+    localLoginEnabled: { type: boolean, default: true }
+    oidcAutoRedirect: { type: boolean, default: false }
+    youtubeRemoteLoginEnabled: { type: boolean, default: false }
+    deviceLoginEnabled: { type: boolean, default: true, description: Lets TVs sign in by QR code approved from a signed-in phone. }
+    bilibiliMirrorProbingEnabled: { type: boolean, default: false, description: Measures BiliBili mirrors in the background so playback starts on the fastest one. }
+    recommenderEnabled:
+      type: boolean
+      default: false
+      description: Offers the optional recommender to users. No effect when the service is not installed.
+    recommenderDefaultOn:
+      type: boolean
+      default: false
+      description: On, the recommender home is every user's home until they turn it off; off, each user turns it on.
+    recommenderDefaultAlgorithm: { type: string, nullable: true }
+    recommenderAllowedAlgorithms:
+      type: array
+      items: { type: string }
+      description: Algorithms offered; empty means all the recommender has.
+    recommenderTimeoutMs: { type: integer, default: 0, description: 0 uses RECOMMENDER_REQUEST_TIMEOUT_MS. }
+    recommenderStreamRequestsPerMinute:
+      type: integer
+      default: 0
+      description: Instance-wide limit of video requests to YouTube made for recommendations; 0 uses RECOMMENDER_STREAM_REQUESTS_PER_MINUTE.
+    accessMode:
+      type: string
+      enum: [unrestricted, allow_list]
+      default: unrestricted

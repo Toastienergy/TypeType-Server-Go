@@ -1,0 +1,158 @@
+SabrPlaybackCreate:
+  post:
+    tags: [playback]
+    summary: Create a SABR session or transfer a matching prewarmed session
+    parameters:
+      - name: videoId
+        in: path
+        required: true
+        schema: { type: string }
+      - name: videoItag
+        in: query
+        schema: { type: integer, minimum: 1 }
+      - name: audioItag
+        in: query
+        schema: { type: integer, minimum: 1 }
+      - name: audioTrackId
+        in: query
+        schema: { type: string }
+      - name: startTimeMs
+        in: query
+        schema: { type: integer, format: int64, minimum: 0, default: 0 }
+      - name: audioOnly
+        in: query
+        schema: { type: boolean, default: false }
+      - name: isLive
+        in: query
+        schema: { type: boolean, default: false }
+      - name: prewarm
+        in: query
+        description: Keep this session briefly for the next matching creation by the same account.
+        schema: { type: boolean, default: false }
+    responses:
+      '200':
+        description: Playback session created or transferred.
+        content:
+          application/json:
+            schema:
+              $ref: ../components/sabr-playback.yaml#/SabrPlaybackCreateResponse
+      '202':
+        description: Playback session is still preparing.
+        content:
+          application/json:
+            schema:
+              $ref: ../components/sabr-playback.yaml#/SabrPlaybackCreateResponse
+      '422':
+        $ref: ../components/common.yaml#/JsonError
+SabrPlaybackPosition:
+  post:
+    tags: [playback]
+    summary: Update the SABR playhead, active formats, ranges, and playback rate
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../components/sabr-playback.yaml#/SabrPlaybackPositionRequest
+    responses:
+      '200':
+        description: Current server-side SABR playback position. A stale generation is ignored and the current generation and position are returned.
+        content:
+          application/json:
+            schema:
+              $ref: ../components/sabr-playback.yaml#/SabrPlaybackPositionResponse
+      '400':
+        $ref: ../components/common.yaml#/JsonError
+      '404':
+        $ref: ../components/common.yaml#/JsonError
+SabrPlaybackWindow:
+  post:
+    tags: [playback]
+    summary: Update playback state and return the current playable SABR window
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../components/sabr-playback.yaml#/SabrPlaybackWindowRequest
+    responses:
+      '200':
+        $ref: '#/components/responses/Window'
+      '202':
+        $ref: '#/components/responses/Window'
+      '400':
+        $ref: ../components/common.yaml#/JsonError
+      '404':
+        $ref: ../components/common.yaml#/JsonError
+SabrPlaybackPrefetch:
+  post:
+    tags: [playback]
+    summary: Advance demand-driven SABR preparation for the current window
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../components/sabr-playback.yaml#/SabrPlaybackWindowRequest
+    responses:
+      '200':
+        $ref: '#/components/responses/Window'
+      '202':
+        $ref: '#/components/responses/Window'
+      '400':
+        $ref: ../components/common.yaml#/JsonError
+      '404':
+        $ref: ../components/common.yaml#/JsonError
+SabrPlaybackSegments:
+  post:
+    tags: [playback]
+    summary: Read the currently prepared SABR segment window without starting demand
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../components/sabr-playback.yaml#/SabrPlaybackWindowRequest
+    responses:
+      '200':
+        $ref: '#/components/responses/Window'
+      '202':
+        $ref: '#/components/responses/Window'
+      '400':
+        $ref: ../components/common.yaml#/JsonError
+      '404':
+        $ref: ../components/common.yaml#/JsonError
+SabrPlaybackRelease:
+  delete:
+    tags: [playback]
+    summary: Release a SABR playback session the client no longer plays
+    description: Frees the session and its registry slot at once instead of waiting for idle eviction. Releasing an unknown or already released session also returns 204.
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+    responses:
+      '204':
+        description: The session is released.
+      '400':
+        $ref: ../components/common.yaml#/JsonError
+components:
+  parameters:
+    SessionId:
+      name: sessionId
+      in: path
+      required: true
+      schema: { type: string }
+  responses:
+    Window:
+      description: Ready or preparing SABR playback window.
+      content:
+        application/json:
+          schema:
+            $ref: ../components/sabr-playback.yaml#/SabrPlaybackWindowResponse

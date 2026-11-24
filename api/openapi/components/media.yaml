@@ -1,0 +1,277 @@
+VideoItem:
+  type: object
+  required: [id, title, url, thumbnailUrl, uploaderName, uploaderUrl, duration, viewCount, uploadDate, streamType, isLive, isPostLive, isLiveContent, isShortFormContent, uploaderVerified]
+  properties:
+    id: { type: string }
+    title: { type: string }
+    url: { type: string }
+    thumbnailUrl: { type: string }
+    uploaderName: { type: string }
+    uploaderUrl: { type: string }
+    uploaderAvatarUrl: { type: string }
+    duration: { type: integer, format: int64 }
+    viewCount: { type: integer, format: int64 }
+    uploadDate: { type: string }
+    uploaded: { type: integer, format: int64, default: -1 }
+    streamType: { type: string }
+    isLive: { type: boolean }
+    isPostLive: { type: boolean }
+    isLiveContent: { type: boolean }
+    isShortFormContent: { type: boolean }
+    uploaderVerified: { type: boolean }
+    shortDescription: { type: string, nullable: true }
+    publishedAt: { type: integer, format: int64, nullable: true }
+SearchPageResponse:
+  type: object
+  required: [items, nextpage, searchSuggestion, isCorrectedSearch, playlists, channels]
+  properties:
+    items: { type: array, items: { $ref: '#/VideoItem' } }
+    nextpage: { type: string, nullable: true }
+    searchSuggestion: { type: string, nullable: true }
+    isCorrectedSearch: { type: boolean }
+    playlists: { type: array, items: { $ref: '#/PlaylistResultItem' }, default: [] }
+    channels: { type: array, items: { $ref: '#/ChannelResultItem' }, default: [] }
+ChannelResultItem:
+  type: object
+  required: [id, name, url, thumbnailUrl, description, subscriberCount, streamCount, isVerified]
+  properties:
+    id: { type: string }
+    name: { type: string }
+    url: { type: string }
+    thumbnailUrl: { type: string }
+    description: { type: string }
+    subscriberCount: { type: integer, format: int64 }
+    streamCount: { type: integer, format: int64 }
+    isVerified: { type: boolean }
+SearchFilterOption:
+  type: object
+  required: [value, label]
+  properties:
+    value: { type: string }
+    label: { type: string }
+    isDefault: { type: boolean, default: false }
+SearchFilterGroup:
+  type: object
+  required: [key, label, multiSelect, options]
+  properties:
+    key: { type: string }
+    label: { type: string }
+    multiSelect: { type: boolean }
+    options: { type: array, items: { $ref: '#/SearchFilterOption' } }
+SearchFiltersResponse:
+  type: object
+  required: [contentFilters, sortFilters, filterGroups]
+  properties:
+    contentFilters: { type: array, items: { $ref: '#/SearchFilterOption' } }
+    sortFilters: { type: array, items: { $ref: '#/SearchFilterOption' } }
+    filterGroups: { type: array, items: { $ref: '#/SearchFilterGroup' }, default: [] }
+ChannelResponse:
+  type: object
+  required: [name, description, avatarUrl, bannerUrl, subscriberCount, isVerified, videos, nextpage]
+  properties:
+    name: { type: string }
+    description: { type: string }
+    avatarUrl: { type: string }
+    bannerUrl: { type: string }
+    subscriberCount: { type: integer, format: int64 }
+    isVerified: { type: boolean }
+    videos: { type: array, items: { $ref: '#/VideoItem' } }
+    nextpage: { type: string, nullable: true }
+    hasCourses: { type: boolean, default: false, description: The channel has a Courses tab. }
+    focusArchiveDays: { type: integer, nullable: true, description: Set when the focus mode limits this channel to its recent videos. }
+    focusBlocked: { type: boolean, default: false, description: Set when focus blocks this channel's videos until added to the active study group. }
+    focusStudyUnlockAt: { type: integer, format: int64, nullable: true, description: Epoch millis when a pending study channel finishes cooling off. }
+    focusBlockCode: { type: string, nullable: true, description: Machine-readable focus restriction code for this channel. }
+ChannelPageRequest:
+  type: object
+  required: [url]
+  properties:
+    url: { type: string }
+    nextpage: { type: string, nullable: true }
+    sort:
+      type: string
+      nullable: true
+      enum: [latest, popular, oldest]
+PlaylistResultItem:
+  type: object
+  required: [id, title, url, thumbnailUrl, uploaderName, streamCount, playlistType]
+  properties:
+    id: { type: string }
+    title: { type: string }
+    url: { type: string }
+    thumbnailUrl: { type: string }
+    uploaderName: { type: string }
+    streamCount: { type: integer, format: int64 }
+    playlistType: { type: string }
+ChannelPlaylistsResponse:
+  type: object
+  required: [playlists, nextpage]
+  properties:
+    playlists: { type: array, items: { $ref: '#/PlaylistResultItem' } }
+    nextpage: { type: string, nullable: true }
+PodcastItem:
+  type: object
+  required: [id, title, url, thumbnailUrl, uploaderName, streamCount, playlistType]
+  properties:
+    id: { type: string }
+    title: { type: string }
+    url: { type: string }
+    thumbnailUrl: { type: string }
+    uploaderName: { type: string }
+    streamCount: { type: integer, format: int64 }
+    playlistType: { type: string }
+ChannelPostsResponse:
+  type: object
+  required: [channelName, channelUrl, posts, nextpage]
+  properties:
+    channelName: { type: string }
+    channelUrl: { type: string }
+    posts: { type: array, items: { $ref: '#/CommunityPostItem' } }
+    nextpage: { type: string, nullable: true }
+CommunityPostItem:
+  type: object
+  required: [id, url, type, text, authorName, authorUrl, authorAvatarUrl, publishedTime, textualLikeCount, textualCommentCount, images]
+  properties:
+    id: { type: string }
+    url: { type: string }
+    type: { type: string, enum: [text, image, poll, video, shared_post, unknown] }
+    text: { type: string, description: HTML content. }
+    authorName: { type: string }
+    authorUrl: { type: string }
+    authorAvatarUrl: { type: string }
+    publishedTime: { type: string }
+    publishedAt: { type: integer, format: int64, nullable: true }
+    likeCount: { type: integer, format: int64, nullable: true }
+    textualLikeCount: { type: string }
+    commentCount: { type: integer, format: int64, nullable: true }
+    textualCommentCount: { type: string }
+    images: { type: array, items: { type: string } }
+    poll:
+      nullable: true
+      allOf: [{ $ref: '#/CommunityPostPoll' }]
+    video:
+      nullable: true
+      allOf: [{ $ref: '#/CommunityPostVideo' }]
+    sharedPost:
+      nullable: true
+      allOf: [{ $ref: '#/CommunityPostItem' }]
+CommunityPostPoll:
+  type: object
+  required: [type, choices, textualVoteCount]
+  properties:
+    type: { type: string, enum: [text, image, quiz, unknown] }
+    choices: { type: array, items: { $ref: '#/CommunityPostPollChoice' } }
+    voteCount: { type: integer, format: int64, nullable: true }
+    textualVoteCount: { type: string }
+CommunityPostPollChoice:
+  type: object
+  required: [text]
+  properties:
+    text: { type: string }
+    imageUrl: { type: string, nullable: true }
+CommunityPostVideo:
+  type: object
+  required: [url, title, thumbnailUrl]
+  properties:
+    url: { type: string }
+    title: { type: string }
+    thumbnailUrl: { type: string }
+PodcastPageResponse:
+  type: object
+  required: [channelName, channelUrl, podcasts, episodes, nextpage]
+  properties:
+    channelName: { type: string }
+    channelUrl: { type: string }
+    podcasts: { type: array, items: { $ref: '#/PodcastItem' } }
+    episodes: { type: array, items: { $ref: '#/VideoItem' } }
+    nextpage: { type: string, nullable: true }
+PodcastEpisodesResponse:
+  type: object
+  required: [podcast, episodes, nextpage]
+  properties:
+    podcast: { $ref: '#/PodcastItem' }
+    episodes: { type: array, items: { $ref: '#/VideoItem' } }
+    nextpage: { type: string, nullable: true }
+PublicPlaylistItem:
+  type: object
+  required: [id, title, url, thumbnailUrl, uploaderName, streamCount, playlistType]
+  properties:
+    id: { type: string }
+    title: { type: string }
+    url: { type: string }
+    thumbnailUrl: { type: string }
+    uploaderName: { type: string }
+    streamCount: { type: integer, format: int64 }
+    playlistType: { type: string }
+PublicPlaylistResponse:
+  type: object
+  required: [playlist, videos, nextpage]
+  properties:
+    playlist: { $ref: '#/PublicPlaylistItem' }
+    videos: { type: array, items: { $ref: '#/VideoItem' } }
+    nextpage: { type: string, nullable: true }
+SavedPlaylistItem:
+  type: object
+  required: [id, publicPlaylistId, url, title, thumbnailUrl, uploaderName, streamCount, playlistType, savedAt]
+  properties:
+    id: { type: string }
+    publicPlaylistId: { type: string }
+    url: { type: string }
+    title: { type: string }
+    thumbnailUrl: { type: string }
+    uploaderName: { type: string }
+    streamCount: { type: integer, format: int64 }
+    playlistType: { type: string }
+    savedAt: { type: integer, format: int64 }
+SavedPlaylistRequest:
+  type: object
+  required: [url]
+  properties:
+    url: { type: string }
+CommentItem:
+  type: object
+  required: [id, text, author, authorUrl, authorAvatarUrl, likeCount, textualLikeCount, publishedTime, isHeartedByUploader, isPinned, uploaderVerified, replyCount, repliesPage]
+  properties:
+    id: { type: string }
+    text: { type: string }
+    author: { type: string }
+    authorUrl: { type: string }
+    authorAvatarUrl: { type: string }
+    likeCount: { type: integer, format: int64 }
+    textualLikeCount: { type: string }
+    publishedTime: { type: string }
+    publishedAt: { type: integer, format: int64, nullable: true }
+    isHeartedByUploader: { type: boolean }
+    isPinned: { type: boolean }
+    uploaderVerified: { type: boolean }
+    replyCount: { type: integer }
+    repliesPage: { type: string, nullable: true }
+    image:
+      nullable: true
+      allOf: [{ $ref: '#/CommentImage' }]
+    voiceReply:
+      nullable: true
+      allOf: [{ $ref: '#/CommentVoiceReply' }]
+CommentImage:
+  type: object
+  required: [url, animated]
+  properties:
+    url: { type: string, nullable: true, description: Largest image variant. Null when YouTube explains why the image is missing. }
+    animated: { type: boolean, description: True for GIFs, often served as animated WebP. }
+    unavailableText: { type: string, nullable: true }
+CommentVoiceReply:
+  type: object
+  required: [url, durationMs, transcript, playable]
+  properties:
+    url: { type: string, description: Stable YouTube watch URL; play it through /comments/voice. }
+    durationMs: { type: integer, format: int64 }
+    transcript: { type: string }
+    playable: { type: boolean }
+    unavailableText: { type: string, nullable: true }
+CommentsPageResponse:
+  type: object
+  required: [comments, nextpage, commentsDisabled]
+  properties:
+    comments: { type: array, items: { $ref: '#/CommentItem' } }
+    nextpage: { type: string, nullable: true }
+    commentsDisabled: { type: boolean }

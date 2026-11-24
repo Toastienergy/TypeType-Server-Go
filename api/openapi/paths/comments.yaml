@@ -1,0 +1,81 @@
+Comments:
+  get:
+    tags: [extraction]
+    summary: Get comments for a stream
+    parameters:
+      - name: url
+        in: query
+        required: true
+        schema: { type: string }
+      - name: nextpage
+        in: query
+        required: false
+        schema: { type: string }
+    responses:
+      '200':
+        description: Comment page.
+        content:
+          application/json:
+            schema:
+              $ref: ../components/media.yaml#/CommentsPageResponse
+      '400':
+        $ref: ../components/common.yaml#/JsonError
+      '422':
+        $ref: ../components/common.yaml#/JsonError
+      '429':
+        $ref: ../components/common.yaml#/RetryableError
+      '503':
+        $ref: ../components/common.yaml#/RetryableError
+      '504':
+        $ref: ../components/common.yaml#/UpstreamTimeoutError
+Replies:
+  get:
+    tags: [extraction]
+    summary: Get replies for a comment thread
+    parameters:
+      - name: url
+        in: query
+        required: true
+        schema: { type: string }
+      - name: repliesPage
+        in: query
+        required: true
+        schema: { type: string }
+    responses:
+      '200':
+        description: Reply page.
+        content:
+          application/json:
+            schema:
+              $ref: ../components/media.yaml#/CommentsPageResponse
+      '400':
+        $ref: ../components/common.yaml#/JsonError
+      '422':
+        $ref: ../components/common.yaml#/JsonError
+      '429':
+        $ref: ../components/common.yaml#/RetryableError
+      '503':
+        $ref: ../components/common.yaml#/RetryableError
+      '504':
+        $ref: ../components/common.yaml#/UpstreamTimeoutError
+Voice:
+  get:
+    tags: [extraction]
+    summary: Get the audio of a YouTube comment voice reply
+    description: Returns the whole voice reply as an MP4 AAC file. Only audio-only media up to two minutes are served.
+    parameters:
+      - name: url
+        in: query
+        required: true
+        description: The voice reply watch URL from `CommentVoiceReply.url`.
+        schema: { type: string }
+    responses:
+      '200':
+        description: Voice reply audio.
+        content:
+          audio/mp4:
+            schema: { type: string, format: binary }
+      '400':
+        $ref: ../components/common.yaml#/JsonError
+      '422':
+        $ref: ../components/common.yaml#/JsonError

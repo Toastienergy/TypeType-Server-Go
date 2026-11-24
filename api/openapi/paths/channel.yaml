@@ -1,0 +1,142 @@
+Channel:
+  get:
+    tags: [extraction]
+    summary: Get channel metadata and videos
+    parameters:
+      - name: url
+        in: query
+        required: true
+        schema: { type: string }
+      - name: nextpage
+        in: query
+        required: false
+        schema: { type: string }
+      - name: sort
+        in: query
+        required: false
+        schema:
+          type: string
+          enum: [latest, popular, oldest]
+    responses:
+      '200':
+        description: Channel metadata and video page.
+        headers:
+          X-Request-ID:
+            $ref: ../components/common.yaml#/RequestIdHeader
+        content:
+          application/json:
+            schema:
+              $ref: ../components/media.yaml#/ChannelResponse
+      '400':
+        $ref: ../components/common.yaml#/JsonError
+      '422':
+        $ref: ../components/common.yaml#/JsonError
+      '429':
+        $ref: ../components/common.yaml#/RetryableError
+      '503':
+        $ref: ../components/common.yaml#/RetryableError
+      '504':
+        $ref: ../components/common.yaml#/UpstreamTimeoutError
+ChannelPlaylists:
+  get:
+    tags: [extraction]
+    summary: Get channel playlists
+    parameters:
+      - name: url
+        in: query
+        required: true
+        schema: { type: string }
+      - name: nextpage
+        in: query
+        required: false
+        schema: { type: string }
+      - name: tab
+        in: query
+        required: false
+        description: Which playlist-like tab of the channel to list.
+        schema: { type: string, enum: [playlists, courses], default: playlists }
+    responses:
+      '200':
+        description: Channel playlist page.
+        headers:
+          X-Request-ID:
+            $ref: ../components/common.yaml#/RequestIdHeader
+        content:
+          application/json:
+            schema:
+              $ref: ../components/media.yaml#/ChannelPlaylistsResponse
+      '400':
+        $ref: ../components/common.yaml#/JsonError
+      '422':
+        $ref: ../components/common.yaml#/JsonError
+      '429':
+        $ref: ../components/common.yaml#/RetryableError
+      '503':
+        $ref: ../components/common.yaml#/RetryableError
+      '504':
+        $ref: ../components/common.yaml#/UpstreamTimeoutError
+ChannelPosts:
+  get:
+    tags: [extraction]
+    summary: Get YouTube channel community posts
+    parameters:
+      - name: url
+        in: query
+        required: true
+        schema: { type: string }
+      - name: nextpage
+        in: query
+        required: false
+        schema: { type: string }
+    responses:
+      '200':
+        description: Channel community posts page.
+        headers:
+          X-Request-ID:
+            $ref: ../components/common.yaml#/RequestIdHeader
+        content:
+          application/json:
+            schema:
+              $ref: ../components/media.yaml#/ChannelPostsResponse
+      '400':
+        $ref: ../components/common.yaml#/JsonError
+      '403':
+        $ref: ../components/common.yaml#/JsonError
+      '422':
+        $ref: ../components/common.yaml#/JsonError
+      '429':
+        $ref: ../components/common.yaml#/RetryableError
+      '503':
+        $ref: ../components/common.yaml#/RetryableError
+      '504':
+        $ref: ../components/common.yaml#/UpstreamTimeoutError
+ChannelPage:
+  post:
+    tags: [extraction]
+    summary: Get channel metadata and videos with pagination cursor in JSON body
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../components/media.yaml#/ChannelPageRequest
+    responses:
+      '200':
+        description: Channel metadata and video page.
+        headers:
+          X-Request-ID:
+            $ref: ../components/common.yaml#/RequestIdHeader
+        content:
+          application/json:
+            schema:
+              $ref: ../components/media.yaml#/ChannelResponse
+      '400':
+        $ref: ../components/common.yaml#/JsonError
+      '422':
+        $ref: ../components/common.yaml#/JsonError
+      '429':
+        $ref: ../components/common.yaml#/RetryableError
+      '503':
+        $ref: ../components/common.yaml#/RetryableError
+      '504':
+        $ref: ../components/common.yaml#/UpstreamTimeoutError

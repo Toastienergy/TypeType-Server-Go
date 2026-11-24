@@ -9,7 +9,9 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"typetype.dev/server/internal/httpx"
@@ -58,20 +60,41 @@ func min64(a, b time.Duration) time.Duration {
 
 // mediaPath stores the target and returns its /media path, or "" when the URL cannot be proxied or has expired.
 func (s *Server) mediaPath(ctx context.Context, raw string, alternates []string, bid *string) string {
+	if bid == nil || strings.TrimSpace(*bid) == "" {
+		bid = nicoBid(nil, raw)
+	}
+	raw, _, _ = strings.Cut(raw, "#")
 	u, msg := validateProxyURL(raw)
-	if msg != "" {
+	provider := ""
+	if msg == "" {
+		provider = proxyProvider(u.Hostname())
+	}
+	if provider != "bilibili" && provider != "niconico" {
 		return ""
 	}
 	clean := trackingParams.ReplaceAllString(u.String(), "")
 	ttl := mediaTTL(clean)
 	var alts []string
-	for _, a := range alternates {
-		au, msg := validateProxyURL(a)
-		if msg != "" || au.Path != u.Path || a == clean || len(alts) >= 5 {
-			continue
+	if provider == "bilibili" {
+		blocked := akamaiBlacklisted()
+		var candidates []string
+		for _, a := range alternates {
+			if !blocked || !isAkamaiURL(a) {
+				candidates = append(candidates, a)
+			}
 		}
-		if t := mediaTTL(a); t > 0 {
-			alts, ttl = append(alts, trackingParams.ReplaceAllString(au.String(), "")), min64(ttl, t)
+		for _, a := range append(candidates, uposMirrors(clean, blocked, bilibiliRegion())...) {
+			au, msg := validateProxyURL(a)
+			if msg != "" || proxyProvider(au.Hostname()) != "bilibili" || au.EscapedPath() != u.EscapedPath() || len(alts) >= 5 {
+				continue
+			}
+			a = trackingParams.ReplaceAllString(au.String(), "")
+			if a == clean || slices.Contains(alts, a) {
+				continue
+			}
+			if t := mediaTTL(a); t > 0 {
+				alts, ttl = append(alts, a), min64(ttl, t)
+			}
 		}
 	}
 	if ttl <= 0 {
@@ -133,7 +156,7 @@ func (s *Server) pipeMedia(w http.ResponseWriter, r *http.Request, urls []string
 		default:
 			req.Header.Set("User-Agent", browserUA)
 			if bid != nil && *bid != "" {
-				req.Header.Set("Cookie", "domand_bid="+*bid)
+				req.Header.Set("Cookie", nicoBidCookie(target, *bid))
 			}
 		}
 		if rng != "" {

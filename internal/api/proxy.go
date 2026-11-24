@@ -126,6 +126,7 @@ var copyBufs = sync.Pool{New: func() any { b := make([]byte, 64<<10); return &b 
 
 func (s *Server) proxyRoutes(rt *Router) {
 	rt.Handle("GET", "/proxy", s.zones.proxy.Limit(nil, s.proxy))
+	rt.Handle("GET", "/proxy/nicovideo", s.zones.proxy.Limit(nil, s.nicoVideoProxy))
 	rt.Handle("GET", "/proxy/image", s.zones.storyboard.Limit(nil, func(w http.ResponseWriter, r *http.Request) {
 		raw := r.URL.Query().Get("url")
 		if !r.URL.Query().Has("url") {
@@ -184,6 +185,14 @@ func (s *Server) proxy(w http.ResponseWriter, r *http.Request) {
 		req.Header.Set("Accept", "*/*")
 	} else {
 		req.Header.Set("User-Agent", browserUA)
+	}
+	var param *string
+	if q := r.URL.Query(); q.Has("domand_bid") {
+		v := q.Get("domand_bid")
+		param = &v
+	}
+	if bid := nicoBid(param, raw); bid != nil && provider == "niconico" {
+		req.Header.Set("Cookie", nicoBidCookie(clean, *bid))
 	}
 	if rangeHeader != "" {
 		req.Header.Set("Range", rangeHeader)

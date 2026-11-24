@@ -125,6 +125,9 @@ func (s *Server) hlsManifest(ctx context.Context, manifest string, signed bool) 
 	defer cancel()
 	req, _ := http.NewRequestWithContext(cctx, "GET", fetch, nil)
 	req.Header.Set("User-Agent", browserUA)
+	if bid := nicoBid(nil, manifest); bid != nil {
+		req.Header.Set("Cookie", nicoBidCookie(fetch, *bid))
+	}
 	res, err := s.proxyClient.Do(req)
 	if err != nil {
 		return "", http.StatusUnprocessableEntity, "HLS manifest fetch failed"

@@ -28,7 +28,11 @@ func (s *Server) publicAccess(w http.ResponseWriter, r *http.Request) (string, b
 		plain(w, r, http.StatusUnauthorized, "Invalid token")
 		return "", false
 	}
-	id, ok := s.Auth.Verify(r.Context(), strings.TrimPrefix(h, "Bearer "))
+	id, ok, err := s.Auth.Verify(r.Context(), strings.TrimPrefix(h, "Bearer "))
+	if err != nil {
+		s.fail(w, r, err)
+		return "", false
+	}
 	if !ok {
 		plain(w, r, http.StatusUnauthorized, "Invalid token")
 		return "", false

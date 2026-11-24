@@ -15,7 +15,9 @@ import (
 func BenchmarkOverhead(b *testing.B) {
 	rt := NewRouter()
 	for _, c := range catalog {
-		rt.Handle(c[0], c[1], func(w http.ResponseWriter, r *http.Request) { httpx.JSON(w, http.StatusOK, map[string]string{"status": "UP"}) })
+		rt.Handle(c[0], c[1], func(w http.ResponseWriter, r *http.Request) {
+			httpx.JSON(w, http.StatusOK, map[string]string{"status": "UP"})
+		})
 	}
 	h := httpx.Observe(slog.New(slog.NewTextHandler(io.Discard, nil)), httpx.CORS(nil, true, httpx.Gzip(rt.Handler())))
 	for _, path := range []string{"/health", "/channel/playlists", "/admin/users/abc/allowed/channels/https://www.youtube.com/@x"} {

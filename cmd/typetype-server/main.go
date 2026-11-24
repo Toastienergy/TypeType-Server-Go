@@ -71,6 +71,7 @@ func run(log *slog.Logger) error {
 	errc := make(chan error, 1)
 	go func() { errc <- hs.Serve(ln) }()
 	log.Info("ready", "port", cfg.Port, "startupMs", time.Since(start).Milliseconds(), "databaseMs", dbMs, "routes", written, "of", total)
+	go srv.Admin.Get(ctx)
 	select {
 	case err := <-errc:
 		if !errors.Is(err, http.ErrServerClosed) {

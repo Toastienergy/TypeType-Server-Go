@@ -148,36 +148,49 @@ func (s *Service) Forget(sessionIDs ...string) {
 }
 
 // Verify returns the user id of a valid access token: guests by signature alone, users only while their session
-// row exists, belongs to them, is not revoked and has not expired.
-func (s *Service) Verify(ctx context.Context, token string) (string, bool) {
+// row exists, belongs to them, is not revoked and has not expired. err is set only when the session could not be
+// read, so a database outage never answers 401 and signs clients out.
+func (s *Service) Verify(ctx context.Context, token string) (string, bool, error) {
 	c, err := Verify(s.secret, token, time.Now())
 	if err != nil || c.Subject == "" {
-		return "", false
+		return "", false, nil
 	}
 	if strings.HasPrefix(c.Subject, "guest:") {
-		return c.Subject, true
+		return c.Subject, true, nil
 	}
 	if c.SessionID == "" {
-		return "", false
+		return "", false, nil
 	}
-	e, ok := s.session(ctx, c.SessionID)
+	e, ok, err := s.session(ctx, c.SessionID)
+	if err != nil {
+		return "", false, err
+	}
 	if !ok || e.userID != c.Subject || e.revoked || e.expiresAt <= nowMs() {
-		return "", false
+		return "", false, nil
 	}
-	return c.Subject, true
+	return c.Subject, true, nil
 }
 
-func (s *Service) session(ctx context.Context, id string) (sessionEntry, bool) {
+// session reads the session row, cached for sessionCacheTTL; when the database fails, a cached entry of any age
+// still answers.
+func (s *Service) session(ctx context.Context, id string) (sessionEntry, bool, error) {
 	s.mu.Lock()
-	e, ok := s.sessions[id]
+	cached, ok := s.sessions[id]
 	s.mu.Unlock()
-	if ok && time.Since(e.seen) < sessionCacheTTL {
-		return e, true
+	if ok && time.Since(cached.seen) < sessionCacheTTL {
+		return cached, true, nil
 	}
+	var e sessionEntry
 	var revoked *int64
 	err := s.db.QueryRow(ctx, "SELECT user_id, expires_at, revoked_at FROM sessions WHERE id = $1", id).Scan(&e.userID, &e.expiresAt, &revoked)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return e, false, nil
+	}
 	if err != nil {
-		return e, false
+		if ok {
+			return cached, true, nil
+		}
+		return e, false, err
 	}
 	e.revoked, e.seen = revoked != nil, time.Now()
 	s.mu.Lock()
@@ -186,7 +199,7 @@ func (s *Service) session(ctx context.Context, id string) (sessionEntry, bool) {
 	}
 	s.sessions[id] = e
 	s.mu.Unlock()
-	return e, true
+	return e, true, nil
 }
 
 func (s *Service) Guest() string {

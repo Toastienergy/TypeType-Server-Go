@@ -31,6 +31,15 @@ func Open(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
 	cfg.MaxConns = 16
 	cfg.MinConns = 2
 	cfg.MaxConnIdleTime = 5 * time.Minute
+	// A database that went away must fail requests in seconds, not hold them until the client gives up.
+	cfg.ConnConfig.ConnectTimeout = 2 * time.Second
+	cfg.HealthCheckPeriod = 15 * time.Second
+	br := &breaker{timeout: cfg.ConnConfig.ConnectTimeout, probeEvery: 2 * time.Second}
+	cfg.BeforeConnect = func(context.Context, *pgx.ConnConfig) error { return br.before(time.Now()) }
+	cfg.AfterConnect = func(context.Context, *pgx.Conn) error {
+		br.after(time.Now())
+		return nil
+	}
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
 		return nil, err

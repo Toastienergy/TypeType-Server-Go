@@ -237,7 +237,11 @@ func (s *Server) userID(w http.ResponseWriter, r *http.Request) (string, bool) {
 		plain(w, r, http.StatusUnauthorized, "Missing token")
 		return "", false
 	}
-	id, ok := s.Auth.Verify(r.Context(), strings.TrimPrefix(h, "Bearer "))
+	id, ok, err := s.Auth.Verify(r.Context(), strings.TrimPrefix(h, "Bearer "))
+	if err != nil {
+		s.fail(w, r, err)
+		return "", false
+	}
 	if !ok {
 		plain(w, r, http.StatusUnauthorized, "Invalid token")
 		return "", false
@@ -251,7 +255,7 @@ func (s *Server) optionalUserID(r *http.Request) string {
 	if !strings.HasPrefix(h, "Bearer ") {
 		return ""
 	}
-	id, _ := s.Auth.Verify(r.Context(), strings.TrimPrefix(h, "Bearer "))
+	id, _, _ := s.Auth.Verify(r.Context(), strings.TrimPrefix(h, "Bearer "))
 	return id
 }
 

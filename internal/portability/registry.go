@@ -4,6 +4,11 @@ package portability
 func NewRegistry(settings func([]byte) ([]byte, error)) *Registry {
 	return &Registry{adapters: []Adapter{
 		typeTypeAdapter{settings: func(raw []byte) ([]byte, error) { return settings(raw) }},
+		newPipeAdapter{pipePipeDB},
+		newPipeAdapter{newPipeDB},
+		opmlAdapter{OPML},
+		opmlAdapter{SkyTube},
+		opmlAdapter{YoutubeLocal},
 	}}
 }
 

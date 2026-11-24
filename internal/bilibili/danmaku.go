@@ -145,3 +145,61 @@ func (c *Client) Danmaku(ctx context.Context, cid int64) ([]Bullet, error) {
 	}
 	return out, nil
 }
+
+// Comments reads one page of a video's comment thread (offset "" for the first page, which also carries the pinned
+// ones) and returns the next offset, or "" at the end.
+func (c *Client) Comments(ctx context.Context, aid int64, offset string) ([]map[string]any, string, error) {
+	pag, _ := json.Marshal(map[string]string{"offset": offset})
+	u, err := c.Signed(ctx, "https://api.bilibili.com/x/v2/reply/wbi/main", map[string]string{"oid": strconv.FormatInt(aid, 10), "type": "1",
+		"mode": "3", "pagination_str": string(pag), "plat": "1", "web_location": "1315875"})
+	if err != nil {
+		return nil, "", err
+	}
+	res, err := c.Get(ctx, u, wwwReferer)
+	if err != nil {
+		return nil, "", err
+	}
+	if err := codeErr(res, "comments"); err != nil {
+		return nil, "", err
+	}
+	d := obj(res, "data")
+	var out []map[string]any
+	if offset == "" {
+		for _, x := range arr(d, "top_replies") {
+			if o, ok := x.(map[string]any); ok {
+				o["isTop"] = true
+				out = append(out, o)
+			}
+		}
+	}
+	for _, x := range arr(d, "replies") {
+		if o, ok := x.(map[string]any); ok {
+			out = append(out, o)
+		}
+	}
+	next := ""
+	if cur := obj(d, "cursor"); cur["is_end"] != true {
+		next = str(obj(cur, "pagination_reply"), "next_offset")
+	}
+	return out, next, nil
+}
+
+// Replies reads one page of the answers to a comment.
+func (c *Client) Replies(ctx context.Context, aid, root int64, page int) ([]map[string]any, error) {
+	u := "https://api.bilibili.com/x/v2/reply/reply?type=1&ps=10&web_location=333.788&oid=" + strconv.FormatInt(aid, 10) + "&root=" +
+		strconv.FormatInt(root, 10) + "&pn=" + strconv.Itoa(page)
+	res, err := c.Get(ctx, u, wwwReferer)
+	if err != nil {
+		return nil, err
+	}
+	if err := codeErr(res, "replies"); err != nil {
+		return nil, err
+	}
+	var out []map[string]any
+	for _, x := range arr(obj(res, "data"), "replies") {
+		if o, ok := x.(map[string]any); ok {
+			out = append(out, o)
+		}
+	}
+	return out, nil
+}

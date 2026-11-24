@@ -60,6 +60,14 @@ func (s *Server) comments(pageParam string) http.HandlerFunc {
 			plain(w, r, http.StatusBadRequest, "Missing 'repliesPage' parameter")
 			return
 		}
+		if bilibiliHost(raw) {
+			s.bilibiliComments(r.Context(), w, r, raw, page)
+			return
+		}
+		if strings.Contains(strings.ToLower(raw), "nicovideo.jp") || strings.Contains(strings.ToLower(raw), "nico.ms") {
+			httpx.JSON(w, http.StatusOK, youtube.CommentsPage{Comments: []youtube.Comment{}, CommentsDisabled: true})
+			return
+		}
 		id := YouTubeID(raw)
 		if id == "" {
 			plain(w, r, http.StatusBadRequest, "Unsupported comments URL")

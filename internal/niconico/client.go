@@ -126,17 +126,7 @@ func (c *Client) Watch(ctx context.Context, id string) (*Video, error) {
 	if t, err := time.Parse(time.RFC3339, s(w, "video", "registeredAt")); err == nil {
 		v.Registered = t
 	}
-	if owner, ok := dig(w, "owner").(map[string]any); ok && owner != nil {
-		v.OwnerName, v.OwnerIcon = s(owner, "nickname"), s(owner, "iconUrl")
-		if id := n(owner, "id"); id > 0 {
-			v.OwnerURL = "https://www.nicovideo.jp/user/" + strconv.FormatInt(id, 10)
-		}
-	} else if ch, ok := dig(w, "channel").(map[string]any); ok && ch != nil {
-		v.OwnerName, v.OwnerIcon = s(ch, "name"), s(ch, "thumbnail", "url")
-		if cid := s(ch, "id"); cid != "" {
-			v.OwnerURL = "https://ch.nicovideo.jp/" + cid
-		}
-	}
+	v.OwnerName, v.OwnerURL, v.OwnerIcon = uploader(w)
 	tags, _ := dig(w, "tag", "items").([]any)
 	for _, t := range tags {
 		if name := s(t, "name"); name != "" {
@@ -453,4 +443,51 @@ func (c *Client) User(ctx context.Context, id string, page int) (profile map[str
 		}
 	}
 	return profile, items, n(vids, "totalCount"), nil
+}
+
+// uploader is NiconicoStreamExtractor's uploader: since October 2026 the page's structured data
+// (metadata.jsonLd.owner) carries it, the owner and channel objects of the watch data before that.
+func uploader(w map[string]any) (name, pageURL, icon string) {
+	ld, _ := dig(w, "metadata", "jsonLd", "owner").(map[string]any)
+	owner, _ := dig(w, "owner").(map[string]any)
+	ch, _ := dig(w, "channel").(map[string]any)
+	channel := owner == nil
+	if _, ok := w["metadata"]; ok {
+		channel = s(ld, "type") == "channel"
+	}
+	id := s(ld, "id")
+	if id == "" {
+		if channel {
+			id = s(ch, "id")
+		} else if n := n(owner, "id"); n > 0 {
+			id = strconv.FormatInt(n, 10)
+		} else {
+			id = s(owner, "id")
+		}
+	}
+	name = s(ld, "name")
+	if name == "" {
+		if channel {
+			name = s(ch, "name")
+		} else {
+			name = s(owner, "nickname")
+		}
+	}
+	if name == "" {
+		name = "Unknown"
+	}
+	if channel {
+		pageURL = "https://ch.nicovideo.jp/" + id
+	} else {
+		pageURL = "https://www.nicovideo.jp/user/" + id
+	}
+	icon = s(ld, "iconUrl")
+	if _, has := ld["iconUrl"]; !has {
+		if channel {
+			icon = s(ch, "thumbnail", "url")
+		} else {
+			icon = s(owner, "iconUrl")
+		}
+	}
+	return name, pageURL, icon
 }

@@ -409,3 +409,44 @@ func (c *Client) Comments(ctx context.Context, id string) ([]Bullet, error) {
 	}
 	return all, nil
 }
+
+func (c *Client) nvapi(ctx context.Context, u string) (map[string]any, error) {
+	req, _ := http.NewRequestWithContext(ctx, "GET", u, nil)
+	req.Header.Set("X-Frontend-Id", "6")
+	req.Header.Set("X-Frontend-Version", "0")
+	req.Header.Set("X-Niconico-Language", "ja-jp")
+	res, err := c.http.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	if res.StatusCode/100 != 2 {
+		return nil, fmt.Errorf("%w: nvapi HTTP %d", ErrUnavailable, res.StatusCode)
+	}
+	var out map[string]any
+	if err := json.NewDecoder(io.LimitReader(res.Body, 16<<20)).Decode(&out); err != nil {
+		return nil, err
+	}
+	d, _ := out["data"].(map[string]any)
+	return d, nil
+}
+
+// User reads a user's profile and one page (100 per page) of their uploads, newest first.
+func (c *Client) User(ctx context.Context, id string, page int) (profile map[string]any, items []map[string]any, total int64, err error) {
+	prof, err := c.nvapi(ctx, "https://nvapi.nicovideo.jp/v1/users/"+id)
+	if err != nil {
+		return nil, nil, 0, err
+	}
+	vids, err := c.nvapi(ctx, fmt.Sprintf("https://nvapi.nicovideo.jp/v3/users/%s/videos?sortKey=registeredAt&sortOrder=desc&sensitiveContents=mask&pageSize=100&page=%d", id, page))
+	if err != nil {
+		return nil, nil, 0, err
+	}
+	profile, _ = prof["user"].(map[string]any)
+	list, _ := vids["items"].([]any)
+	for _, x := range list {
+		if e, ok := dig(x, "essential").(map[string]any); ok {
+			items = append(items, e)
+		}
+	}
+	return profile, items, n(vids, "totalCount"), nil
+}

@@ -81,6 +81,14 @@ func (s *Server) channelPageSorted(w http.ResponseWriter, r *http.Request, raw, 
 			s.writeChannel(w, r, user, ch)
 			return
 		}
+		if l := strings.ToLower(raw); strings.Contains(l, "nicovideo.jp/") {
+			ch, ok := s.niconicoChannel(r.Context(), w, r, raw, page)
+			if !ok {
+				return
+			}
+			s.writeChannel(w, r, user, ch)
+			return
+		}
 		ch, err := s.YT.Channel(r.Context(), raw, page)
 		switch {
 		case errors.Is(err, youtube.ErrNotChannel), errors.Is(err, youtube.ErrBadPage):

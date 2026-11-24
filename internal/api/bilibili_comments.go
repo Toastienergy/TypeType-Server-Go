@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"typetype.dev/server/internal/bilibili"
-	"typetype.dev/server/internal/httpx"
 	"typetype.dev/server/internal/youtube"
 )
 
@@ -61,20 +60,18 @@ func biliComment(o map[string]any, aid int64) youtube.Comment {
 	return c
 }
 
-func (s *Server) bilibiliComments(ctx context.Context, w http.ResponseWriter, r *http.Request, raw, page string) {
+func (s *Server) bilibiliComments(ctx context.Context, raw, page string) (youtube.CommentsPage, *commentErr) {
 	out := youtube.CommentsPage{Comments: []youtube.Comment{}}
 	var pg biliCommentPage
 	if page != "" {
 		b, err := base64.RawURLEncoding.DecodeString(strings.TrimPrefix(page, "bili1."))
 		if !strings.HasPrefix(page, "bili1.") || err != nil || json.Unmarshal(b, &pg) != nil || pg.Aid <= 0 {
-			plain(w, r, http.StatusBadRequest, "Invalid page")
-			return
+			return out, &commentErr{http.StatusBadRequest, "Invalid page", ""}
 		}
 	} else {
 		bv := bilibili.BVID(raw)
 		if bv == "" {
-			plain(w, r, http.StatusBadRequest, "Unsupported comments URL")
-			return
+			return out, &commentErr{http.StatusBadRequest, "Unsupported comments URL", ""}
 		}
 		pg.Aid = bilibili.BV2AV(bv)
 	}
@@ -93,11 +90,10 @@ func (s *Server) bilibiliComments(ctx context.Context, w http.ResponseWriter, r 
 		}
 	}
 	if err != nil {
-		httpx.Error(w, r, http.StatusUnprocessableEntity, "Could not load comments", "error")
-		return
+		return out, &commentErr{http.StatusUnprocessableEntity, "Could not load comments", "error"}
 	}
 	for _, o := range items {
 		out.Comments = append(out.Comments, biliComment(o, pg.Aid))
 	}
-	httpx.JSON(w, http.StatusOK, out)
+	return out, nil
 }

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strings"
@@ -47,6 +48,7 @@ func (s *Server) publicAccess(w http.ResponseWriter, r *http.Request) (string, b
 func (s *Server) commentRoutes(rt *Router) {
 	rt.Handle("GET", "/comments", s.comments("nextpage"))
 	rt.Handle("GET", "/comments/voice", s.commentVoice)
+	rt.Handle("GET", "/comments/search", s.commentSearch)
 	rt.Handle("GET", "/comments/replies", s.comments("repliesPage"))
 }
 
@@ -65,29 +67,48 @@ func (s *Server) comments(pageParam string) http.HandlerFunc {
 			plain(w, r, http.StatusBadRequest, "Missing 'repliesPage' parameter")
 			return
 		}
-		if bilibiliHost(raw) {
-			s.bilibiliComments(r.Context(), w, r, raw, page)
-			return
-		}
-		if strings.Contains(strings.ToLower(raw), "nicovideo.jp") || strings.Contains(strings.ToLower(raw), "nico.ms") {
-			httpx.JSON(w, http.StatusOK, youtube.CommentsPage{Comments: []youtube.Comment{}, CommentsDisabled: true})
-			return
-		}
-		id := YouTubeID(raw)
-		if id == "" {
-			plain(w, r, http.StatusBadRequest, "Unsupported comments URL")
-			return
-		}
-		res, err := s.YT.Comments(r.Context(), id, page)
-		if errors.Is(err, youtube.ErrBadPage) {
-			plain(w, r, http.StatusBadRequest, "Invalid page")
-			return
-		}
-		if err != nil {
-			s.Log.Warn("comments", "videoId", id, "err", err)
-			httpx.Error(w, r, http.StatusUnprocessableEntity, "Could not load comments", "error")
+		res, cerr := s.commentPage(r.Context(), raw, page)
+		if cerr != nil {
+			cerr.write(w, r)
 			return
 		}
 		httpx.JSON(w, http.StatusOK, res)
 	}
+}
+
+type commentErr struct {
+	status    int
+	msg, code string
+}
+
+func (e *commentErr) write(w http.ResponseWriter, r *http.Request) {
+	if e.code == "" {
+		plain(w, r, e.status, e.msg)
+		return
+	}
+	httpx.Error(w, r, e.status, e.msg, e.code)
+}
+
+// commentPage is CommentService.getComments: a Bilibili page, no comments for NicoNico (PipePipe has none), or a
+// YouTube page.
+func (s *Server) commentPage(ctx context.Context, raw, page string) (youtube.CommentsPage, *commentErr) {
+	if bilibiliHost(raw) {
+		return s.bilibiliComments(ctx, raw, page)
+	}
+	if strings.Contains(strings.ToLower(raw), "nicovideo.jp") || strings.Contains(strings.ToLower(raw), "nico.ms") {
+		return youtube.CommentsPage{Comments: []youtube.Comment{}, CommentsDisabled: true}, nil
+	}
+	id := YouTubeID(raw)
+	if id == "" {
+		return youtube.CommentsPage{}, &commentErr{http.StatusBadRequest, "Unsupported comments URL", ""}
+	}
+	res, err := s.YT.Comments(ctx, id, page)
+	if errors.Is(err, youtube.ErrBadPage) {
+		return res, &commentErr{http.StatusBadRequest, "Invalid page", ""}
+	}
+	if err != nil {
+		s.Log.Warn("comments", "videoId", id, "err", err)
+		return res, &commentErr{http.StatusUnprocessableEntity, "Could not load comments", "error"}
+	}
+	return res, nil
 }

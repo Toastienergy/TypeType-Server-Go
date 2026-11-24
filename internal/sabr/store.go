@@ -112,6 +112,14 @@ func (st *Store) Remember(key string, s *Session, start int64) {
 	st.mu.Unlock()
 }
 
+// HasPrewarmed reports a prewarmed session waiting under key.
+func (st *Store) HasPrewarmed(key string) bool {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	_, ok := st.prewarm[key]
+	return ok
+}
+
 func (st *Store) TakePrewarmed(key string) (*Session, int64) {
 	st.mu.Lock()
 	defer st.mu.Unlock()

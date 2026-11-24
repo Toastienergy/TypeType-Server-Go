@@ -176,6 +176,7 @@ func (s *Server) youtubeBootstrap(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, r, http.StatusBadGateway, "SABR bootstrap metadata unavailable", "error")
 		return
 	}
+	s.earlySession(r, id, in)
 	resp := buildStream(id, raw, nil, in)
 	m := in.Meta
 	resp.UploaderName, resp.UploaderAvatarURL, resp.Description = m.Author, m.ChannelAvatar, m.Description

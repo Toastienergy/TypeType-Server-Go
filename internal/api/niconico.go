@@ -160,6 +160,9 @@ func (s *Server) niconicoStream(w http.ResponseWriter, r *http.Request) {
 			resp.AudioStreams = append(resp.AudioStreams, *x)
 		}
 	}
+	if !internalLookup(r.Context()) && (len(resp.VideoOnlyStreams) > 0 || len(resp.AudioStreams) > 0) {
+		s.warmStreams("niconico", append(append([]videoStream{}, resp.VideoOnlyStreams...), resp.VideoStreams...), resp.AudioStreams)
+	}
 	for _, o := range <-relc {
 		if it, ok := niconicoRelatedItem(o); ok && !hidden(it) && (focus == nil || focus.keepsFeedVideo(it)) && access.allowsUploader(it.UploaderURL, it.UploaderName) {
 			resp.RelatedStreams = append(resp.RelatedStreams, it)
@@ -168,9 +171,6 @@ func (s *Server) niconicoStream(w http.ResponseWriter, r *http.Request) {
 	if len(resp.VideoOnlyStreams) == 0 && len(resp.AudioStreams) == 0 {
 		httpx.Error(w, r, http.StatusUnprocessableEntity, "No playable streams", "no_playable_streams")
 		return
-	}
-	if !internalLookup(r.Context()) {
-		s.warmStreams("niconico", append(append([]videoStream{}, resp.VideoOnlyStreams...), resp.VideoStreams...), resp.AudioStreams)
 	}
 	httpx.JSON(w, http.StatusOK, resp)
 }

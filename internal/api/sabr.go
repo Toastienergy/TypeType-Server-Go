@@ -187,9 +187,11 @@ func (s *Server) sabrCreate(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	began := time.Now()
 	ctx, cancel := context.WithTimeout(r.Context(), sabrInfoTimeout)
 	info, err := s.Sabr.Token().Info(ctx, videoID)
 	cancel()
+	infoAt := time.Since(began)
 	if err != nil {
 		s.Log.Warn("sabr info", "videoId", videoID, "err", err)
 		plain(w, r, http.StatusUnprocessableEntity, "SABR probe failed")
@@ -214,10 +216,14 @@ func (s *Server) sabrCreate(w http.ResponseWriter, r *http.Request) {
 		s.acceptance.played(videoID)
 	}
 	s.awaitInit(r.Context(), ss)
+	initAt := time.Since(began)
 	if isPrewarm {
 		s.Sabr.Remember(key, ss, start)
 	}
-	s.respondPrepared(w, r, ss, start, s.awaitReady(r.Context(), ss, start, deref(p.AudioOnly)))
+	ready := s.awaitReady(r.Context(), ss, start, deref(p.AudioOnly))
+	s.Log.Info("sabr_create", "videoId", videoID, "prewarm", isPrewarm, "infoMs", infoAt.Milliseconds(), "initMs", initAt.Milliseconds(),
+		"readyMs", time.Since(began).Milliseconds(), "ready", ready, "requests", ss.Requests())
+	s.respondPrepared(w, r, ss, start, ready)
 }
 
 // awaitInit waits for the initialization segments, like the Kotlin preload: without them nothing can play, so

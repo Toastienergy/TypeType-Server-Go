@@ -211,3 +211,72 @@ func parseChannelHeader(ch *Channel, res map[string]any) {
 		}
 	}
 }
+
+var playlistTabParams = map[string]string{"playlists": "EglwbGF5bGlzdHPyBgQKAkIA", "courses": "Egdjb3Vyc2Vz8gYFCgOiAQA="}
+
+type ChannelPlaylists struct {
+	Playlists []PlaylistResult `json:"playlists"`
+	NextPage  *string          `json:"nextpage"`
+}
+
+// ChannelPlaylists lists a channel's playlists (or courses) tab, or the page a token points to.
+func (c *Client) ChannelPlaylists(ctx context.Context, raw, tab, page string) (ChannelPlaylists, error) {
+	out := ChannelPlaylists{Playlists: []PlaylistResult{}}
+	var res map[string]any
+	var err error
+	if page != "" {
+		token, ok := decodePage(page)
+		if !ok {
+			return out, ErrBadPage
+		}
+		res, err = c.Call(ctx, Web, "browse", map[string]any{"continuation": token})
+	} else {
+		id, _, terr := c.ChannelTarget(ctx, raw)
+		if terr != nil {
+			return out, terr
+		}
+		res, err = c.Call(ctx, Web, "browse", map[string]any{"browseId": id, "params": playlistTabParams[tab]})
+	}
+	if err != nil {
+		return out, err
+	}
+	var items []any
+	for _, t := range List(res, "contents", "twoColumnBrowseResultsRenderer", "tabs") {
+		tr := Obj(t, "tabRenderer")
+		if !Bool(tr, "selected") {
+			continue
+		}
+		for _, sec := range List(tr, "content", "sectionListRenderer", "contents") {
+			for _, it := range List(sec, "itemSectionRenderer", "contents") {
+				items = append(items, List(it, "gridRenderer", "items")...)
+				items = append(items, List(it, "shelfRenderer", "content", "horizontalListRenderer", "items")...)
+			}
+		}
+		items = append(items, List(tr, "content", "richGridRenderer", "contents")...)
+	}
+	for _, a := range List(res, "onResponseReceivedActions") {
+		items = append(items, List(a, "appendContinuationItemsAction", "continuationItems")...)
+	}
+	for _, it := range items {
+		if t := Str(it, "continuationItemRenderer", "continuationEndpoint", "continuationCommand", "token"); t != "" {
+			out.NextPage = encodePage(t)
+			continue
+		}
+		l := Obj(it, "lockupViewModel")
+		if l == nil {
+			l = Obj(it, "richItemRenderer", "content", "lockupViewModel")
+		}
+		if l != nil {
+			if p, ok := playlistFromLockup(l); ok {
+				out.Playlists = append(out.Playlists, p)
+			}
+			continue
+		}
+		if g := Obj(it, "gridPlaylistRenderer"); g != nil {
+			id := Str(g, "playlistId")
+			out.Playlists = append(out.Playlists, PlaylistResult{ID: id, Title: Text(g["title"]), URL: "https://www.youtube.com/playlist?list=" + id,
+				ThumbnailURL: LastURL(List(g, "thumbnail", "thumbnails")), StreamCount: Digits(Text(g["videoCountShortText"])), PlaylistType: "NORMAL"})
+		}
+	}
+	return out, nil
+}

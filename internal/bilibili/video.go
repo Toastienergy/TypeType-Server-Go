@@ -315,3 +315,18 @@ func (c *Client) Related(ctx context.Context, bv string) ([]map[string]any, erro
 	}
 	return out, nil
 }
+
+// Trending is the home page's recommended feed, which the Kotlin server serves as Bilibili trending.
+func (c *Client) Trending(ctx context.Context) ([]map[string]any, error) {
+	res, err := c.Get(ctx, "https://api.bilibili.com/x/web-interface/index/top/rcmd?fresh_type=3", wwwReferer)
+	if err != nil {
+		return nil, err
+	}
+	var out []map[string]any
+	for _, x := range arr(obj(res, "data"), "item") {
+		if o, ok := x.(map[string]any); ok {
+			out = append(out, o)
+		}
+	}
+	return out, nil
+}

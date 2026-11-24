@@ -180,3 +180,30 @@ func (s *Server) bilibiliStream(w http.ResponseWriter, r *http.Request) {
 	}
 	httpx.JSON(w, http.StatusOK, resp)
 }
+
+// bilibiliTrendingItem is BilibiliTrendingService's mapping, which keeps the card's own uri and the "video" type.
+func bilibiliTrendingItem(o map[string]any) youtube.VideoItem {
+	it := bilibiliItem(o)
+	if uri, _ := o["uri"].(string); uri != "" {
+		it.URL = uri + "?p=1"
+	}
+	owner, _ := o["owner"].(map[string]any)
+	it.ID, it.StreamType = it.URL, "video"
+	it.UploaderAvatarURL, _ = owner["face"].(string)
+	if it.Uploaded > 0 {
+		it.UploadDate = time.Unix(it.Uploaded/1000, 0).UTC().Format("2006-01-02 15:04:05")
+	}
+	return it
+}
+
+func (s *Server) bilibiliTrending(ctx context.Context) ([]youtube.VideoItem, error) {
+	items, err := s.bili.Trending(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]youtube.VideoItem, 0, len(items))
+	for _, o := range items {
+		out = append(out, bilibiliTrendingItem(o))
+	}
+	return out, nil
+}

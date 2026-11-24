@@ -21,8 +21,12 @@ type recPools struct {
 	s        *Server
 	mu       sync.Mutex
 	building map[string]bool
-	trendAt  time.Time
-	trend    []youtube.VideoItem
+	trend    map[int]trendEntry
+}
+
+type trendEntry struct {
+	items []youtube.VideoItem
+	at    time.Time
 }
 
 const (
@@ -30,7 +34,9 @@ const (
 	poolStaleTTL = 24 * time.Hour
 )
 
-func newRecPools(s *Server) *recPools { return &recPools{s: s, building: map[string]bool{}} }
+func newRecPools(s *Server) *recPools {
+	return &recPools{s: s, building: map[string]bool{}, trend: map[int]trendEntry{}}
+}
 
 type signals struct {
 	favorites, history, subscriptions []string
@@ -57,20 +63,26 @@ func (p *recPools) read(ctx context.Context, key string) (*recommend.Pool, bool)
 	return &pool, true
 }
 
-func (p *recPools) trending(ctx context.Context) []youtube.VideoItem {
+func (p *recPools) trending(ctx context.Context, svc int) []youtube.VideoItem {
 	p.mu.Lock()
-	if time.Since(p.trendAt) < 30*time.Minute {
-		t := p.trend
+	if e, ok := p.trend[svc]; ok && time.Since(e.at) < 30*time.Minute {
 		p.mu.Unlock()
-		return t
+		return e.items
 	}
 	p.mu.Unlock()
-	t, err := p.s.YT.Trending(ctx)
+	var t []youtube.VideoItem
+	var err error
+	switch svc {
+	case 0:
+		t, err = p.s.YT.Trending(ctx)
+	case 5:
+		t, err = p.s.bilibiliTrending(ctx)
+	}
 	if err != nil {
 		return nil
 	}
 	p.mu.Lock()
-	p.trend, p.trendAt = t, time.Now()
+	p.trend[svc] = trendEntry{t, time.Now()}
 	p.mu.Unlock()
 	return t
 }
@@ -192,7 +204,7 @@ func (p *recPools) build(ctx context.Context, pr *recommend.Profile, sig *signal
 		subs := tag(p.subscriptionVideos(user, 60, false), recommend.Subscription, svc)
 		var disc []recommend.Tagged
 		if len(subs) == 0 {
-			disc = tag(p.trending(ctx), recommend.Trending, svc)
+			disc = tag(p.trending(ctx, svc), recommend.Trending, svc)
 		}
 		return recommend.BuildPool(pr, subs, disc, intent, time.Now())
 	}
@@ -208,7 +220,7 @@ func (p *recPools) build(ctx context.Context, pr *recommend.Profile, sig *signal
 		}
 	}
 	cands := append(p.related(ctx, seeds, 8, recommend.Theme), p.related(ctx, favSeeds, 6, recommend.Exploration)...)
-	cands = append(cands, tag(p.trending(ctx), recommend.Trending, svc)...)
+	cands = append(cands, tag(p.trending(ctx, svc), recommend.Trending, svc)...)
 	var disc []recommend.Tagged
 	for _, t := range recommend.AssembleDiscovery(pr, cands, 48) {
 		if recommend.ServiceID(t.Video.URL) == svc {

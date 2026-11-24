@@ -96,11 +96,17 @@ func (s *Server) searchRoutes(rt *Router) {
 		if !ok {
 			return
 		}
-		if svc != 0 {
+		var out []youtube.VideoItem
+		var err error
+		switch svc {
+		case 5:
+			out, err = s.bilibiliTrending(r.Context())
+		case 0:
+			out, err = s.YT.Trending(r.Context())
+		default:
 			notWritten(w, r)
 			return
 		}
-		out, err := s.YT.Trending(r.Context())
 		if err != nil {
 			httpx.Error(w, r, http.StatusUnprocessableEntity, "Trending failed", "error")
 			return

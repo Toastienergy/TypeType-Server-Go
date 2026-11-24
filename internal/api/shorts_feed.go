@@ -196,7 +196,7 @@ func (s *Server) blendShorts(ctx context.Context, subs []youtube.VideoItem, page
 	}
 	var disc []youtube.VideoItem
 	seen := map[string]bool{}
-	for _, v := range s.recs.trending(ctx) {
+	for _, v := range s.recs.trending(ctx, 0) {
 		if !v.IsShortFormContent && (v.Duration < 1 || v.Duration > 60) {
 			continue
 		}

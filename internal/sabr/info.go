@@ -74,6 +74,7 @@ func (v flex) Int() int64 {
 
 // Info is everything a SABR pump needs to talk to googlevideo for one video.
 type Info struct {
+	HlsURL      string
 	VideoID     string
 	BaseURL     string
 	Ustreamer   []byte
@@ -143,6 +144,9 @@ func parseSession(videoID string, raw []byte) (*Info, error) {
 		VisitorData: t.VisitorData, ClientID: mwebClientID, ClientVer: "2.20250122.04.00", UserAgent: mwebUA,
 		Formats: t.Formats, DurationMs: t.DurationMs, Title: t.Title, Live: t.HlsManifest != nil && *t.HlsManifest != "",
 		Meta: t.Metadata}
+	if t.HlsManifest != nil {
+		in.HlsURL = *t.HlsManifest
+	}
 	if u, err := url.Parse(t.URL); err == nil {
 		if v := u.Query().Get("cver"); v != "" {
 			in.ClientVer = v

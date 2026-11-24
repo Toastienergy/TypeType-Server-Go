@@ -142,7 +142,8 @@ func startParam(raw string) int64 {
 }
 
 func (s *Server) streamRoutes(rt *Router) {
-	rt.Handle("GET", "/streams/youtube/sabr", s.youtubeStream)
+	rt.Handle("GET", "/streams/youtube/sabr", func(w http.ResponseWriter, r *http.Request) { s.youtubeStream(w, r, false) })
+	rt.Handle("GET", "/streams/youtube/live", func(w http.ResponseWriter, r *http.Request) { s.youtubeStream(w, r, true) })
 	rt.Handle("GET", "/streams/youtube/sabr/bootstrap", s.youtubeBootstrap)
 }
 
@@ -259,7 +260,7 @@ func sabrStreams(id string, in *sabr.Info) ([]videoStream, []audioStream) {
 	return vs, as
 }
 
-func (s *Server) youtubeStream(w http.ResponseWriter, r *http.Request) {
+func (s *Server) youtubeStream(w http.ResponseWriter, r *http.Request, live bool) {
 	{
 		raw := r.URL.Query().Get("url")
 		if raw == "" {
@@ -296,6 +297,16 @@ func (s *Server) youtubeStream(w http.ResponseWriter, r *http.Request) {
 		}
 		sb := <-sbc
 		resp.SponsorBlockSegments, resp.SponsorBlockAvailable = sb.segments, sb.available
+		if live {
+			if !resp.IsLive || resp.HlsURL == "" {
+				httpx.Error(w, r, http.StatusBadGateway, "No active YouTube live stream is available", "live_stream_unavailable")
+				return
+			}
+			resp.VideoStreams, resp.VideoOnlyStreams, resp.AudioStreams, resp.DashMpdURL = []videoStream{}, []videoStream{}, []audioStream{}, ""
+		}
+		if resp.IsLive && resp.HlsURL != "" {
+			resp.HlsURL = s.hlsPath(resp.HlsURL)
+		}
 		httpx.JSON(w, http.StatusOK, resp)
 	}
 }
@@ -336,6 +347,8 @@ func buildStream(id, raw string, wt *youtube.Watch, in *sabr.Info) streamRespons
 		}
 		if !resp.IsLive {
 			resp.VideoOnlyStreams, resp.AudioStreams = sabrStreams(id, in)
+		} else if in.HlsURL != "" {
+			resp.HlsURL, resp.HasLiveManifest = in.HlsURL, true
 		}
 	}
 	if resp.Uploaded > 0 {

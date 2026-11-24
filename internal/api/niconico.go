@@ -58,7 +58,7 @@ func (s *Server) niconicoStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := niconico.IDRe.FindString(raw)
-	if !strings.Contains(strings.ToLower(raw), "nicovideo.jp") && !strings.Contains(strings.ToLower(raw), "nico.ms") || id == "" {
+	if !strings.Contains(strings.ToLower(raw), "nicovideo.jp") && !strings.Contains(strings.ToLower(raw), "nico.ms") || id == "" && !niconico.IsLiveURL(raw) {
 		httpx.Error(w, r, http.StatusBadRequest, "URL does not match stream endpoint", "provider_mismatch")
 		return
 	}
@@ -73,6 +73,10 @@ func (s *Server) niconicoStream(w http.ResponseWriter, r *http.Request) {
 			hidden = h
 		}
 		focus = s.focusFor(r.Context(), user)
+	}
+	if niconico.IsLiveURL(raw) {
+		s.niconicoLive(w, r, raw, user, hidden, focus)
+		return
 	}
 	if hidden(youtube.VideoItem{URL: raw}) {
 		httpx.Error(w, r, http.StatusForbidden, "Video is blocked", "content_blocked")

@@ -50,6 +50,7 @@ type Server struct {
 	deArrow     *dearrow
 	bili        *bilibili.Client
 	nico        *niconico.Client
+	links       *shortLinks
 	emoji       *openMoji
 	twitch      *twitch
 	dl          *downloader
@@ -81,6 +82,7 @@ func New(cfg *config.Config, db *pgxpool.Pool, c *cache.Cache, log *slog.Logger)
 	srv.deArrow = newDeArrow(srv)
 	srv.bili = bilibili.NewClient(nil)
 	srv.nico = niconico.NewClient(nil)
+	srv.links = newShortLinks()
 	return srv
 }
 
@@ -124,6 +126,7 @@ func (s *Server) Routes() (http.Handler, *Router) {
 	rt.Handle("GET", "/streams/bilibili", s.bilibiliStream)
 	rt.Handle("GET", "/streams/niconico", s.niconicoStream)
 	s.bulletRoutes(rt)
+	s.titleLinkRoutes(rt)
 	h := httpx.Gzip(rt.Handler())
 	h = httpx.CORS(s.Cfg.AllowedOrigins, s.Cfg.AllowAnyOrigin, h)
 	return httpx.Observe(s.Log, h), rt

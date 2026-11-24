@@ -37,10 +37,19 @@ func (s *Server) sabrManifest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	audioOnly := strings.EqualFold(q.Get("audioOnly"), "true")
-	if pl, session := q.Get("playlist"), q.Get("session"); pl != "" && session != "" {
+	if session := q.Get("session"); session != "" {
 		ss := s.Sabr.Lookup(session)
 		if ss == nil || ss.VideoID != videoID {
 			plain(w, r, http.StatusNotFound, "No active SABR session for this request")
+			return
+		}
+		pl := q.Get("playlist")
+		switch {
+		case pl == "" && audioOnly:
+			s.writeMediaPlaylist(w, r, ss, ss.Audio)
+			return
+		case pl == "":
+			writeMaster(w, ss)
 			return
 		}
 		f := map[string]*sabr.Format{"audio": ss.Audio, "video": ss.Video}[pl]
@@ -106,6 +115,11 @@ func (s *Server) sabrManifest(w http.ResponseWriter, r *http.Request) {
 		s.writeMediaPlaylist(w, r, ss, audio)
 		return
 	}
+	writeMaster(w, ss)
+}
+
+func writeMaster(w http.ResponseWriter, ss *sabr.Session) {
+	audio, video := ss.Audio, ss.Video
 	base := "?format=hls&session=" + ss.ID
 	codecs := strings.Trim(strings.Join([]string{deref(codec(video.MimeType)), deref(codec(audio.MimeType))}, ","), ",")
 	res := ""

@@ -163,6 +163,7 @@ func (s *Session) run(ctx context.Context) {
 
 		res := s.round(reqCtx, in, body, nonce, rn, &cookie)
 		rn++
+		s.requests.Store(int64(rn))
 		cancel()
 		s.mu.Lock()
 		s.abortRequest = nil

@@ -66,3 +66,45 @@ func (s *Session) Pull(itag, seq int) {
 		s.SetPosition(gen, at, audioOnly)
 	}
 }
+
+// TrackState is what SabrSessionStateHandler reports per track.
+type TrackState struct {
+	MaxSegment, EndSegment int
+	BufferedEndMs          int64
+}
+
+func (s *Session) TrackState(itag int) TrackState {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	t := s.trackFor(itag)
+	if t == nil {
+		return TrackState{}
+	}
+	st := TrackState{EndSegment: t.endSeq}
+	for k, sg := range t.segs {
+		if sg.done && k > st.MaxSegment {
+			st.MaxSegment = k
+		}
+	}
+	st.BufferedEndMs, _, _ = t.coveredFrom(s.playerMs)
+	return st
+}
+
+// Requests is how many requests the pump sent upstream.
+func (s *Session) Requests() int64 { return s.requests.Load() }
+
+// Complete is true once every active track holds its last segment.
+func (s *Session) Complete() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, i := range s.activeTracks() {
+		t := s.tracks[i]
+		if t == nil || t.endSeq == 0 {
+			return false
+		}
+		if last := t.segs[t.endSeq]; last == nil || !last.done {
+			return false
+		}
+	}
+	return true
+}

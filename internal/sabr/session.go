@@ -4,6 +4,7 @@ import (
 	"context"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -108,6 +109,7 @@ type Session struct {
 	wake         chan struct{}
 	bytes        int64
 	readyOnce    bool
+	requests     atomic.Int64
 }
 
 const (

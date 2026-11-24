@@ -10,7 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"typetype.dev/server/internal/httpx"
 	"typetype.dev/server/internal/recommend"
 	"typetype.dev/server/internal/store"
 	"typetype.dev/server/internal/youtube"
@@ -33,8 +32,16 @@ const (
 
 func newRecPools(s *Server) *recPools { return &recPools{s: s, building: map[string]bool{}} }
 
-func poolKey(user string, svc int) string {
-	sum := sha256.Sum256([]byte("go1:" + user + ":" + strconv.Itoa(svc) + ":FULL:false"))
+type signals struct {
+	favorites, history, subscriptions []string
+}
+
+func poolKey(user string, svc int, shorts bool) string {
+	mode := "FULL"
+	if shorts {
+		mode = "SHORTS"
+	}
+	sum := sha256.Sum256([]byte("go1:" + user + ":" + strconv.Itoa(svc) + ":" + mode + ":false"))
 	return "recommendations:home:" + hex.EncodeToString(sum[:])
 }
 
@@ -68,10 +75,10 @@ func (p *recPools) trending(ctx context.Context) []youtube.VideoItem {
 	return t
 }
 
-func (p *recPools) profile(r *http.Request, user string) (*recommend.Profile, []string, error) {
+func (p *recPools) profile(r *http.Request, user string) (*recommend.Profile, *signals, error) {
 	ctx := r.Context()
 	pr := &recommend.Profile{Seen: map[string]bool{}, Subscriptions: map[string]bool{}, Favorites: map[string]bool{}, WatchLater: map[string]bool{}}
-	var favorites []string
+	sig := &signals{}
 	rows, err := p.s.DB.Query(ctx, `SELECT 's', channel_url FROM subscriptions WHERE user_id = $1
 UNION ALL SELECT 'f', video_url FROM favorites WHERE user_id = $1
 UNION ALL SELECT 'w', url FROM watch_later WHERE user_id = $1
@@ -87,13 +94,17 @@ UNION ALL (SELECT 'h', url FROM history WHERE user_id = $1 ORDER BY watched_at D
 		switch kind {
 		case "s":
 			pr.Subscriptions[v] = true
+			sig.subscriptions = append(sig.subscriptions, v)
 		case "f":
 			pr.Favorites[v] = true
-			favorites = append(favorites, v)
+			sig.favorites = append(sig.favorites, v)
 		case "w":
 			pr.WatchLater[v] = true
 		case "h":
 			pr.Seen[v] = true
+			if len(sig.history) < 60 {
+				sig.history = append(sig.history, v)
+			}
 		}
 	}
 	rows.Close()
@@ -102,7 +113,7 @@ UNION ALL (SELECT 'h', url FROM history WHERE user_id = $1 ORDER BY watched_at D
 		return nil, nil, err
 	}
 	pr.Hidden = hidden
-	return pr, favorites, nil
+	return pr, sig, nil
 }
 
 func tag(vs []youtube.VideoItem, src recommend.Source, svc int) []recommend.Tagged {
@@ -173,7 +184,10 @@ func (p *recPools) related(ctx context.Context, seeds []string, limit int, src r
 	return all
 }
 
-func (p *recPools) build(ctx context.Context, pr *recommend.Profile, favorites []string, user string, svc int, intent recommend.Intent, full bool) recommend.Pool {
+func (p *recPools) build(ctx context.Context, pr *recommend.Profile, sig *signals, user string, svc int, intent recommend.Intent, full, shorts bool) recommend.Pool {
+	if shorts {
+		return p.buildShorts(ctx, pr, sig, user, svc, intent, full)
+	}
 	if !full {
 		subs := tag(p.subscriptionVideos(user, 60, false), recommend.Subscription, svc)
 		var disc []recommend.Tagged
@@ -188,7 +202,7 @@ func (p *recPools) build(ctx context.Context, pr *recommend.Profile, favorites [
 		seeds[i] = t.Video.URL
 	}
 	var favSeeds []string
-	for _, f := range favorites {
+	for _, f := range sig.favorites {
 		if recommend.ServiceID(f) == svc {
 			favSeeds = append(favSeeds, f)
 		}
@@ -204,12 +218,12 @@ func (p *recPools) build(ctx context.Context, pr *recommend.Profile, favorites [
 	return recommend.BuildPool(pr, subs, disc, intent, time.Now())
 }
 
-func (p *recPools) resolve(r *http.Request, user string, svc int, intent recommend.Intent) (*recommend.Pool, error) {
-	key := poolKey(user, svc)
+func (p *recPools) resolve(r *http.Request, user string, svc int, intent recommend.Intent, shorts bool) (*recommend.Pool, error) {
+	key := poolKey(user, svc, shorts)
 	if pool, ok := p.read(r.Context(), key); ok {
 		return pool, nil
 	}
-	pr, favorites, err := p.profile(r, user)
+	pr, sig, err := p.profile(r, user)
 	if err != nil {
 		return nil, err
 	}
@@ -226,7 +240,7 @@ func (p *recPools) resolve(r *http.Request, user string, svc int, intent recomme
 			}()
 			ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 			defer cancel()
-			pool := p.build(ctx, pr, favorites, user, svc, intent, true)
+			pool := p.build(ctx, pr, sig, user, svc, intent, true, shorts)
 			b, _ := json.Marshal(pool)
 			p.s.Cache.Set(ctx, key, string(b), poolTTL)
 			p.s.Cache.Set(ctx, key+":stale", string(b), poolStaleTTL)
@@ -235,76 +249,17 @@ func (p *recPools) resolve(r *http.Request, user string, svc int, intent recomme
 	if pool, ok := p.read(r.Context(), key+":stale"); ok {
 		return pool, nil
 	}
-	pool := p.build(r.Context(), pr, favorites, user, svc, intent, false)
+	pool := p.build(r.Context(), pr, sig, user, svc, intent, false, shorts)
 	return &pool, nil
 }
 
 func (p *recPools) invalidate(ctx context.Context, user string) {
 	for _, svc := range []int{0, 5, 6} {
-		k := poolKey(user, svc)
-		p.s.Cache.Delete(ctx, k)
-		p.s.Cache.Delete(ctx, k+":stale")
+		for _, shorts := range []bool{false, true} {
+			k := poolKey(user, svc, shorts)
+			p.s.Cache.Delete(ctx, k)
+			p.s.Cache.Delete(ctx, k+":stale")
+		}
 	}
 }
 
-func (s *Server) recommendationRoutes(rt *Router) {
-	rt.Handle("GET", "/recommendations/home", s.authed(func(w http.ResponseWriter, r *http.Request, user string) {
-		q := r.URL.Query()
-		svc := 0
-		if q.Has("service") {
-			n, err := strconv.Atoi(q.Get("service"))
-			if err != nil || n != 0 && n != 5 && n != 6 {
-				plain(w, r, http.StatusBadRequest, "Invalid 'service' parameter")
-				return
-			}
-			svc = n
-		}
-		limit := 20
-		if n, err := strconv.Atoi(q.Get("limit")); err == nil {
-			limit = max(1, min(n, 60))
-		}
-		cursor, ok := recommend.DecodeCursor(q.Get("cursor"))
-		if !ok {
-			plain(w, r, http.StatusBadRequest, "Invalid 'cursor' parameter")
-			return
-		}
-		intent := recommend.ParseIntent(q.Get("intent"))
-		pool, err := s.recs.resolve(r, user, svc, intent)
-		if err != nil {
-			s.fail(w, r, err)
-			return
-		}
-		if cursor.Seed == 0 && cursor.SubIndex == 0 && cursor.DiscIndex == 0 && cursor.SubRun == 0 && len(cursor.RecentURLs) == 0 {
-			cursor.Seed = recommend.NewSeed()
-		}
-		rotated := recommend.Rotate(*pool, cursor.Seed)
-		page := recommend.Mix(&rotated, cursor, limit, intent, time.Now())
-		hidden, err := s.blockedFilter(r, user)
-		if err != nil {
-			s.fail(w, r, err)
-			return
-		}
-		now := time.Now().UnixMilli()
-		items := []youtube.VideoItem{}
-		for _, v := range page.Items {
-			if hidden(v) || startsLater(v, now) {
-				continue
-			}
-			items = append(items, v)
-		}
-		var next *string
-		if page.NextCursor != "" {
-			next = &page.NextCursor
-		}
-		httpx.JSON(w, http.StatusOK, map[string]any{"items": items, "nextCursor": next, "hasMore": next != nil, "debug": nil,
-			"algorithm": nil, "rows": nil, "preparing": nil})
-	}))
-}
-
-func startsLater(v youtube.VideoItem, now int64) bool {
-	at := v.Uploaded
-	if v.PublishedAt != nil && *v.PublishedAt > 0 {
-		at = *v.PublishedAt
-	}
-	return at > 0 && at > now
-}

@@ -42,7 +42,7 @@ func (s *Server) podcastRoutes(rt *Router) {
 			if list.Playlists[i].UploaderName == "" {
 				list.Playlists[i].UploaderName = name
 			}
-			list.Playlists[i].PlaylistType = "PODCAST"
+			list.Playlists[i].PlaylistType = "NORMAL"
 		}
 		httpx.JSON(w, http.StatusOK, map[string]any{"channelName": name, "channelUrl": channel, "podcasts": list.Playlists,
 			"episodes": []youtube.VideoItem{}, "nextpage": list.NextPage})
@@ -58,7 +58,7 @@ func (s *Server) podcastRoutes(rt *Router) {
 			s.playlistError(w, r, err)
 			return
 		}
-		p.Playlist.PlaylistType = "PODCAST"
+		p.Playlist.PlaylistType = "NORMAL"
 		httpx.JSON(w, http.StatusOK, map[string]any{"podcast": p.Playlist, "episodes": p.Videos, "nextpage": p.NextPage})
 	}))
 }

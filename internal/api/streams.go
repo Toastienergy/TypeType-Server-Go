@@ -2,11 +2,14 @@ package api
 
 import (
 	"context"
+	"errors"
+	"net"
 	"net/http"
 	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"typetype.dev/server/internal/httpx"
@@ -291,10 +294,13 @@ func (s *Server) youtubeStream(w http.ResponseWriter, r *http.Request, live bool
 		ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 		defer cancel()
 		infoc := make(chan *sabr.Info, 1)
+		var tokenDown bool
 		go func() {
 			in, err := s.Sabr.Token().Info(ctx, id)
 			if err != nil {
 				s.Log.Warn("stream sabr info", "videoId", id, "err", err)
+				var ne net.Error
+				tokenDown = errors.As(err, &ne) || errors.Is(err, syscall.ECONNREFUSED)
 			}
 			infoc <- in
 		}()
@@ -342,6 +348,15 @@ func (s *Server) youtubeStream(w http.ResponseWriter, r *http.Request, live bool
 		}
 		if resp.IsLive && resp.HlsURL != "" {
 			resp.HlsURL = s.hlsPath(resp.HlsURL)
+		}
+		if len(resp.VideoOnlyStreams) == 0 && len(resp.AudioStreams) == 0 && len(resp.VideoStreams) == 0 && resp.HlsURL == "" {
+			w.Header().Set("Retry-After", "15")
+			if tokenDown {
+				httpx.Error(w, r, http.StatusServiceUnavailable, "The token service could not get a YouTube token", "token_service_unavailable")
+			} else {
+				httpx.Error(w, r, http.StatusServiceUnavailable, "No compatible stream is available for this video", "no_playable_streams")
+			}
+			return
 		}
 		httpx.JSON(w, http.StatusOK, resp)
 	}

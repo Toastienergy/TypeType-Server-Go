@@ -5,10 +5,14 @@ import (
 	"time"
 )
 
-// Timeline is the duration of every segment of itag, for a playlist written up front: the indexed duration of a
-// segment already fetched, the average over the format's approximate duration otherwise. It waits for the segment
-// count, which comes with the first response, and is nil if that does not arrive in time.
-func (s *Session) Timeline(ctx context.Context, itag int, timeout time.Duration) []int64 {
+// SegTime is where one segment starts and how long it lasts.
+type SegTime struct{ StartMs, DurMs int64 }
+
+// Index times every segment of itag, for a manifest written up front: the indexed times of segments already
+// fetched, the average over the format's approximate duration elsewhere, each unknown one starting where the
+// previous ends. It waits for the segment count, which comes with the first response, and is nil if that does not
+// arrive in time.
+func (s *Session) Index(ctx context.Context, itag int, timeout time.Duration) []SegTime {
 	deadline := time.NewTimer(timeout)
 	defer deadline.Stop()
 	for {
@@ -20,13 +24,15 @@ func (s *Session) Timeline(ctx context.Context, itag int, timeout time.Duration)
 		}
 		if n := t.endSeq; n > 0 {
 			avg := max(t.f.DurationMs.Int()/int64(n), 1)
-			out := make([]int64, n)
+			out := make([]SegTime, n)
+			next := int64(0)
 			for i := range out {
 				if sg := t.segs[i+1]; sg != nil && sg.done && sg.DurMs > 0 {
-					out[i] = sg.DurMs
+					out[i] = SegTime{sg.StartMs, sg.DurMs}
 				} else {
-					out[i] = avg
+					out[i] = SegTime{next, avg}
 				}
+				next = out[i].StartMs + out[i].DurMs
 			}
 			s.mu.Unlock()
 			return out

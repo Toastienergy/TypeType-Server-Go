@@ -23,6 +23,7 @@ var tokenVideoRe = regexp.MustCompile(`(?:[?&]v=|/shorts/|youtu\.be/)([A-Za-z0-9
 
 func (s *Server) sabrManifestRoutes(rt *Router) {
 	rt.Handle("GET", "/sabr/manifest/{videoId}", s.sabrManifest)
+	rt.Handle("GET", "/sabr/playback/{sessionId}/manifest", s.playbackManifest)
 	rt.Handle("GET", "/sabr/{videoId}/{itag}/init", s.legacyMedia(true))
 	rt.Handle("GET", "/sabr/{videoId}/{itag}/segment/{seq}", s.legacyMedia(false))
 }
@@ -32,10 +33,7 @@ func (s *Server) sabrManifestRoutes(rt *Router) {
 // HLS player fetches in order and which move the session along as they are asked for.
 func (s *Server) sabrManifest(w http.ResponseWriter, r *http.Request) {
 	videoID, q := r.PathValue("videoId"), r.URL.Query()
-	if !strings.EqualFold(q.Get("format"), "hls") {
-		notWritten(w, r)
-		return
-	}
+	hls := strings.EqualFold(q.Get("format"), "hls")
 	audioOnly := strings.EqualFold(q.Get("audioOnly"), "true")
 	if session := q.Get("session"); session != "" {
 		ss := s.Sabr.Lookup(session)
@@ -45,6 +43,9 @@ func (s *Server) sabrManifest(w http.ResponseWriter, r *http.Request) {
 		}
 		pl := q.Get("playlist")
 		switch {
+		case !hls:
+			s.wholeSabrDash(w, r, ss, audioOnly)
+			return
 		case pl == "" && audioOnly:
 			s.writeMediaPlaylist(w, r, ss, ss.Audio)
 			return
@@ -111,6 +112,10 @@ func (s *Server) sabrManifest(w http.ResponseWriter, r *http.Request) {
 	}
 	start, _ := strconv.ParseInt(q.Get("startTimeMs"), 10, 64)
 	ss := s.Sabr.Create(info, videoID, owner, video, audio, max(start, 0), audioOnly, 0)
+	if !hls {
+		s.wholeSabrDash(w, r, ss, audioOnly)
+		return
+	}
 	if audioOnly {
 		s.writeMediaPlaylist(w, r, ss, audio)
 		return
@@ -142,23 +147,23 @@ func writeHLS(w http.ResponseWriter, body string) {
 // writeMediaPlaylist is SabrHlsManifestBuilder's VOD playlist: every segment of the format, with durations from the
 // index where known and the average elsewhere, relative to /sabr/manifest/{videoId}.
 func (s *Server) writeMediaPlaylist(w http.ResponseWriter, r *http.Request, ss *sabr.Session, f *sabr.Format) {
-	durations := ss.Timeline(r.Context(), f.Itag, timelineWait)
-	if len(durations) == 0 {
+	index := ss.Index(r.Context(), f.Itag, timelineWait)
+	if len(index) == 0 {
 		plain(w, r, http.StatusUnprocessableEntity, "Segment index not yet available")
 		return
 	}
 	target := int64(1)
-	for _, d := range durations {
-		target = max(target, (d+999)/1000)
+	for _, t := range index {
+		target = max(target, (t.DurMs+999)/1000)
 	}
 	query := "?session=" + ss.ID
 	prefix := "../" + ss.VideoID + "/" + strconv.Itoa(f.Itag)
 	var b strings.Builder
-	b.Grow(64 * len(durations))
+	b.Grow(64 * len(index))
 	fmt.Fprintf(&b, "#EXTM3U\n#EXT-X-VERSION:7\n#EXT-X-TARGETDURATION:%d\n#EXT-X-MEDIA-SEQUENCE:1\n#EXT-X-PLAYLIST-TYPE:VOD\n", target)
 	fmt.Fprintf(&b, "#EXT-X-MAP:URI=\"%s/init%s\"\n", prefix, query)
-	for i, d := range durations {
-		fmt.Fprintf(&b, "#EXTINF:%d.%03d,\n%s/segment/%d%s\n", d/1000, d%1000, prefix, i+1, query)
+	for i, t := range index {
+		fmt.Fprintf(&b, "#EXTINF:%d.%03d,\n%s/segment/%d%s\n", t.DurMs/1000, t.DurMs%1000, prefix, i+1, query)
 	}
 	b.WriteString("#EXT-X-ENDLIST\n")
 	writeHLS(w, b.String())

@@ -154,6 +154,7 @@ func (s *Server) streamRoutes(rt *Router) {
 	s.sabrManifestRoutes(rt)
 	s.sabrSessionRoutes(rt)
 	s.dashManifestRoutes(rt)
+	s.liveChatRoutes(rt)
 }
 
 // youtubeBootstrap answers from the token session alone, like SabrBootstrapStreamService: what the player needs

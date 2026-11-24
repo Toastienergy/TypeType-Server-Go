@@ -323,6 +323,9 @@ func parseHeader(data []byte) mediaHeader {
 
 func (s *Session) readUMP(r *bufio.Reader, in *Info, cookie *[]byte, out *roundResult) error {
 	parts := map[int]*pending{}
+	// Control parts are read into one reused buffer: nothing below keeps a slice of it, only copies.
+	var scratch []byte
+	var free []*pending
 	for {
 		typ, err := umpInt(r)
 		if err == io.EOF {
@@ -360,14 +363,23 @@ func (s *Session) readUMP(r *bufio.Reader, in *Info, cookie *[]byte, out *roundR
 			p.seg.data = buf[:len(buf)+n]
 			continue
 		}
-		data := make([]byte, size)
+		if cap(scratch) < size {
+			scratch = make([]byte, max(size, 512))
+		}
+		data := scratch[:size]
 		if _, err := io.ReadFull(r, data); err != nil {
 			return err
 		}
 		switch typ {
 		case 20:
 			h := parseHeader(data)
-			p := &pending{init: h.init}
+			var p *pending
+			if n := len(free); n > 0 {
+				p, free = free[n-1], free[:n-1]
+				*p = pending{init: h.init}
+			} else {
+				p = &pending{init: h.init}
+			}
 			s.mu.Lock()
 			p.t = s.trackFor(h.itag)
 			switch {
@@ -388,7 +400,11 @@ func (s *Session) readUMP(r *bufio.Reader, in *Info, cookie *[]byte, out *roundR
 			}
 			p := parts[int(data[0])]
 			delete(parts, int(data[0]))
-			if p == nil || p.skip {
+			if p == nil {
+				continue
+			}
+			if p.skip {
+				free = append(free, p)
 				continue
 			}
 			s.mu.Lock()
@@ -405,6 +421,7 @@ func (s *Session) readUMP(r *bufio.Reader, in *Info, cookie *[]byte, out *roundR
 			}
 			s.notify()
 			s.mu.Unlock()
+			free = append(free, p)
 		case 35:
 			fields(data, func(num int, v uint64, raw []byte) {
 				switch num {

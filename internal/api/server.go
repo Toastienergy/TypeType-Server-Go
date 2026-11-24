@@ -77,6 +77,7 @@ func New(cfg *config.Config, db *pgxpool.Pool, c *cache.Cache, log *slog.Logger)
 			userData: httpx.NewZone(120, w),
 		}}
 	srv.feeds = newFeeds(srv)
+	srv.startPushPoller()
 	srv.recs = newRecPools(srv)
 	srv.subs = newSubtitles(srv)
 	srv.deArrow = newDeArrow(srv)

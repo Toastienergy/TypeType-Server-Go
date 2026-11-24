@@ -107,6 +107,7 @@ func (s *Server) unsubscribe(w http.ResponseWriter, r *http.Request, user, raw s
 		return
 	}
 	s.feedChanged(user)
+	s.pushSubscriptionRemoved(r.Context(), user, c)
 	w.WriteHeader(http.StatusNoContent)
 }
 

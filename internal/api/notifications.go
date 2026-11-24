@@ -265,6 +265,7 @@ ON CONFLICT (user_id) DO UPDATE SET subscription_last_seen_uploaded = EXCLUDED.s
 		httpx.JSON(w, http.StatusOK, map[string]any{"readAt": now, "unreadCount": unread, "available": true})
 	}))
 	s.preferenceRoutes(rt)
+	s.pushRoutes(rt)
 }
 
 type channelPreference struct {
@@ -348,6 +349,9 @@ func (s *Server) preferenceRoutes(rt *Router) {
 			s.fail(w, r, err)
 			return
 		}
+		if !*req.Enabled {
+			s.clearPendingPush(r.Context(), user, c)
+		}
 		httpx.JSON(w, http.StatusOK, channelPreference{ChannelURL: c, Enabled: *req.Enabled, UpdatedAt: now})
 	}))
 	rt.Handle("PUT", "/notifications/channel-preferences/bulk", s.authed(func(w http.ResponseWriter, r *http.Request, user string) {
@@ -393,6 +397,11 @@ func (s *Server) preferenceRoutes(rt *Router) {
 				return
 			}
 			out = append(out, channelPreference{ChannelURL: c, Enabled: *req.Enabled, UpdatedAt: now})
+		}
+		if !*req.Enabled {
+			for _, p := range out {
+				s.clearPendingPush(r.Context(), user, p.ChannelURL)
+			}
 		}
 		httpx.JSON(w, http.StatusOK, out)
 	}))

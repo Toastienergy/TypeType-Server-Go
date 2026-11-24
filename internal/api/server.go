@@ -127,6 +127,7 @@ func (s *Server) Routes() (http.Handler, *Router) {
 	rt.Handle("GET", "/streams/niconico", s.niconicoStream)
 	s.bulletRoutes(rt)
 	s.titleLinkRoutes(rt)
+	s.adminRoutes(rt)
 	h := httpx.Gzip(rt.Handler())
 	h = httpx.CORS(s.Cfg.AllowedOrigins, s.Cfg.AllowAnyOrigin, h)
 	return httpx.Observe(s.Log, h), rt

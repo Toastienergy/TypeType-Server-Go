@@ -123,6 +123,7 @@ func (s *Server) Routes() (http.Handler, *Router) {
 	s.mediaRoutes(rt)
 	rt.Handle("GET", "/streams/bilibili", s.bilibiliStream)
 	rt.Handle("GET", "/streams/niconico", s.niconicoStream)
+	s.bulletRoutes(rt)
 	h := httpx.Gzip(rt.Handler())
 	h = httpx.CORS(s.Cfg.AllowedOrigins, s.Cfg.AllowAnyOrigin, h)
 	return httpx.Observe(s.Log, h), rt

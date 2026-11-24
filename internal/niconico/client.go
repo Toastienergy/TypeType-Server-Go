@@ -317,3 +317,95 @@ func (c *Client) Search(ctx context.Context, keyword string, page int) ([]map[st
 	}
 	return out, nil
 }
+
+// Bullet is one comment drawn over the video.
+type Bullet struct {
+	Text     string
+	ARGB     int32
+	Position string
+	Size     float64
+	AtMs     int64
+}
+
+var (
+	nicoColors = map[string]uint32{"white": 0xFFFFFF, "red": 0xFF0000, "pink": 0xFF8080, "orange": 0xFFC000, "yellow": 0xFFFF00, "green": 0x00FF00,
+		"cyan": 0x00FFFF, "blue": 0x0000FF, "purple": 0xC000FF, "black": 0x000000, "white2": 0xCCCCCC, "niconicoWhite": 0xCCCC99, "red2": 0xCC0033,
+		"truered": 0xCC0033, "pink2": 0xFF33CC, "orange2": 0xFF6600, "passionorange": 0xFF7F00, "yellow2": 0x999900, "madyellow": 0x999900,
+		"green2": 0x00CC66, "elementalgreen": 0x00CC66, "cyan2": 0x00CCCC, "blue2": 0x3399FF, "marineblue": 0x3399FF, "purple2": 0x6633FF,
+		"nobleviolet": 0x6633FF, "black2": 0x666666}
+	nicoPositions = map[string]string{"top": "TOP", "bottom": "BOTTOM", "ue": "TOP", "shita": "BOTTOM"}
+	nicoSizes     = map[string]float64{"small": 0.5, "big": 0.7}
+)
+
+// Comments posts the watch page's nvComment ticket to the comment server and flattens every thread, newest last
+// reversed as NiconicoCommentsCache does.
+func (c *Client) Comments(ctx context.Context, id string) ([]Bullet, error) {
+	w, err := c.watchData(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	ticket, err := json.Marshal(dig(w, "comment", "nvComment"))
+	if err != nil {
+		return nil, err
+	}
+	req, _ := http.NewRequestWithContext(ctx, "POST", "https://public.nvcomment.nicovideo.jp/v1/threads", bytes.NewReader(ticket))
+	req.Header.Set("x-frontend-id", "6")
+	req.Header.Set("Content-Type", "application/json")
+	res, err := c.http.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	var out struct {
+		Data struct {
+			Threads []struct {
+				Comments []map[string]any `json:"comments"`
+			} `json:"threads"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(io.LimitReader(res.Body, 64<<20)).Decode(&out); err != nil {
+		return nil, err
+	}
+	var all []Bullet
+	for _, t := range out.Data.Threads {
+		for _, cm := range t.Comments {
+			b := Bullet{Text: s(cm, "body"), ARGB: -1, Position: "REGULAR", Size: 0.7}
+			if b.Text == "" {
+				b.Text = s(cm, "content")
+			}
+			b.Text = strings.TrimPrefix(b.Text, "/emotion ")
+			var styles []string
+			if mail := s(cm, "mail"); mail != "" {
+				styles = strings.Split(mail, " ")
+			} else if cmds, ok := cm["commands"].([]any); ok {
+				for _, x := range cmds {
+					if v, ok := x.(string); ok {
+						styles = append(styles, v)
+					}
+				}
+			}
+			colour, pos, size := false, false, false
+			for _, st := range styles {
+				if c, ok := nicoColors[st]; ok && !colour {
+					b.ARGB, colour = int32(0xFF000000|c), true
+				}
+				if p, ok := nicoPositions[st]; ok && !pos {
+					b.Position, pos = p, true
+				}
+				if z, ok := nicoSizes[st]; ok && !size {
+					b.Size, size = z, true
+				}
+			}
+			if _, ok := cm["vpos"]; ok {
+				b.AtMs = n(cm, "vpos") * 10
+			} else {
+				b.AtMs = n(cm, "vposMs")
+			}
+			all = append(all, b)
+		}
+	}
+	for i, j := 0, len(all)-1; i < j; i, j = i+1, j-1 {
+		all[i], all[j] = all[j], all[i]
+	}
+	return all, nil
+}

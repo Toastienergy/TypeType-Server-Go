@@ -2,7 +2,9 @@ package db
 
 import (
 	"context"
+	"crypto/sha256"
 	_ "embed"
+	"encoding/hex"
 	"fmt"
 	"strings"
 	"time"
@@ -40,7 +42,19 @@ func Open(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
 	return pool, nil
 }
 
+// schemaDigest names the exact schema and migrations this binary applies; a base that already carries it skips them,
+// so a restart is ready after one query instead of replaying about two hundred statements. The digest lives in its
+// own one-row table, which the Kotlin server ignores.
+var schemaDigest = func() string {
+	sum := sha256.Sum256([]byte(schemaSQL + "\x00" + migrationsSQL))
+	return hex.EncodeToString(sum[:])
+}()
+
 func migrate(ctx context.Context, pool *pgxpool.Pool) error {
+	var have string
+	if pool.QueryRow(ctx, "SELECT digest FROM go_schema_state WHERE id = 1").Scan(&have) == nil && have == schemaDigest {
+		return nil
+	}
 	conn, err := pool.Acquire(ctx)
 	if err != nil {
 		return err
@@ -65,6 +79,13 @@ func migrate(ctx context.Context, pool *pgxpool.Pool) error {
 		if _, err := tx.Exec(ctx, strings.ReplaceAll(batch, ";\n--\n", ";\n")); err != nil {
 			return fmt.Errorf("schema batch %d: %w", i, err)
 		}
+	}
+	if _, err := tx.Exec(ctx, "CREATE TABLE IF NOT EXISTS go_schema_state (id INT PRIMARY KEY, digest TEXT NOT NULL, applied_at BIGINT NOT NULL)"); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO go_schema_state (id, digest, applied_at) VALUES (1, $1, $2)
+ON CONFLICT (id) DO UPDATE SET digest = EXCLUDED.digest, applied_at = EXCLUDED.applied_at`, schemaDigest, time.Now().UnixMilli()); err != nil {
+		return err
 	}
 	return tx.Commit(ctx)
 }

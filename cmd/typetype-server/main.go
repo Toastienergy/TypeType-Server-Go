@@ -41,14 +41,27 @@ func run(log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	// Postgres and Dragonfly are dialed at the same time: each costs a few round trips and neither needs the other.
+	var kv *cache.Cache
+	var kvErr error
+	kvDone := make(chan struct{})
+	go func() {
+		kv, kvErr = cache.Open(cfg.DragonflyURL)
+		close(kvDone)
+	}()
+	dbStart := time.Now()
 	pool, err := db.Open(ctx, dsn)
+	dbMs := time.Since(dbStart).Milliseconds()
+	<-kvDone
 	if err != nil {
+		if kvErr == nil {
+			kv.Close()
+		}
 		return err
 	}
 	defer pool.Close()
-	kv, err := cache.Open(cfg.DragonflyURL)
-	if err != nil {
-		return err
+	if kvErr != nil {
+		return kvErr
 	}
 	defer kv.Close()
 	srv := api.New(cfg, pool, kv, log)
@@ -57,7 +70,7 @@ func run(log *slog.Logger) error {
 	hs := &http.Server{Handler: handler, ReadHeaderTimeout: 10 * time.Second, MaxHeaderBytes: 64 << 10, IdleTimeout: 2 * time.Minute}
 	errc := make(chan error, 1)
 	go func() { errc <- hs.Serve(ln) }()
-	log.Info("ready", "port", cfg.Port, "startupMs", time.Since(start).Milliseconds(), "routes", written, "of", total)
+	log.Info("ready", "port", cfg.Port, "startupMs", time.Since(start).Milliseconds(), "databaseMs", dbMs, "routes", written, "of", total)
 	select {
 	case err := <-errc:
 		if !errors.Is(err, http.ErrServerClosed) {

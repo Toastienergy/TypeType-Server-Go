@@ -2,13 +2,17 @@ package bilibili
 
 import (
 	"context"
+	"crypto/md5"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"math/big"
 	"net/url"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const bvTable = "FcwAPNKTMug3GV5Lj7EJnHpWsx4tb8haYeviqBz6rkCy12mUSDQX9RdoZf"
@@ -349,4 +353,141 @@ func (c *Client) Search(ctx context.Context, keyword, searchType string, page in
 		}
 	}
 	return out, nil
+}
+
+// Card is the creator header of a space page.
+func (c *Client) Card(ctx context.Context, mid string) (map[string]any, error) {
+	res, err := c.Get(ctx, "https://api.bilibili.com/x/web-interface/card?photo=true&mid="+mid, spaceReferer)
+	if err != nil {
+		return nil, err
+	}
+	if err := codeErr(res, "card"); err != nil {
+		return nil, err
+	}
+	return obj(res, "data"), nil
+}
+
+// SpacePage is one page of a creator's uploads and where the next one starts: the mode that answered and, for the
+// mobile API, the last video's aid it continues from.
+type SpacePage struct {
+	Items   []map[string]any
+	Mode    string
+	LastAid int64
+}
+
+// SpaceVideos tries the signed web API, then the mobile client API, then the keyword search API, the order PipePipe
+// rotates through when Bilibili's risk control refuses one of them. mode pins a later page to the API of the first.
+func (c *Client) SpaceVideos(ctx context.Context, mid, order string, page int, mode string, lastAid int64) (SpacePage, error) {
+	modes := []string{"web", "client", "search"}
+	if mode != "" {
+		modes = []string{mode}
+	}
+	var lastErr error
+	for _, m := range modes {
+		if m == "search" && order == "click" && mode == "" {
+			continue
+		}
+		var list []any
+		var err error
+		switch m {
+		case "web":
+			list, err = c.spaceWeb(ctx, mid, order, page)
+		case "client":
+			list, err = c.spaceClient(ctx, mid, order, lastAid)
+		case "search":
+			list, err = c.spaceSearch(ctx, mid, order, page)
+		}
+		if err != nil {
+			lastErr = err
+			if errors.Is(err, ErrRiskControl) {
+				c.Reset()
+			}
+			continue
+		}
+		out := SpacePage{Mode: m}
+		for _, x := range list {
+			if o, ok := x.(map[string]any); ok {
+				out.Items = append(out.Items, o)
+			}
+		}
+		if n := len(out.Items); n > 0 && m == "client" {
+			last := out.Items[n-1]
+			if str(last, "goto") == "av" {
+				out.LastAid, _ = strconv.ParseInt(str(last, "param"), 10, 64)
+			}
+		}
+		return out, nil
+	}
+	return SpacePage{}, lastErr
+}
+
+func (c *Client) withDm(p map[string]string) map[string]string {
+	for k, v := range c.DmImgParams() {
+		p[k] = v
+	}
+	return p
+}
+
+func (c *Client) spaceWeb(ctx context.Context, mid, order string, page int) ([]any, error) {
+	u, err := c.Signed(ctx, "https://api.bilibili.com/x/space/wbi/arc/search", c.withDm(map[string]string{"mid": mid, "order": order, "ps": "25",
+		"pn": strconv.Itoa(page), "order_avoided": "true", "platform": "web", "web_location": "333.1387"}))
+	if err != nil {
+		return nil, err
+	}
+	res, err := c.Get(ctx, u, spaceReferer)
+	if err != nil {
+		return nil, err
+	}
+	if err := codeErr(res, "space"); err != nil {
+		return nil, err
+	}
+	return arr(obj(res, "data", "list"), "vlist"), nil
+}
+
+func (c *Client) spaceSearch(ctx context.Context, mid, order string, page int) ([]any, error) {
+	u, err := c.Signed(ctx, "https://api.bilibili.com/x/series/recArchivesByKeywords", c.withDm(map[string]string{"mid": mid, "keywords": "",
+		"order": order, "pn": strconv.Itoa(page), "ps": "20"}))
+	if err != nil {
+		return nil, err
+	}
+	res, err := c.Get(ctx, u, spaceReferer)
+	if err != nil {
+		return nil, err
+	}
+	if err := codeErr(res, "space search"); err != nil {
+		return nil, err
+	}
+	return arr(obj(res, "data"), "archives"), nil
+}
+
+const (
+	appKey = "1d8b6e7d45233436"
+	appSec = "560c52ccd288fed045859ed18bffd973"
+)
+
+// spaceClient is the Android app's archive cursor, signed with the app key (encAppSign).
+func (c *Client) spaceClient(ctx context.Context, mid, order string, lastAid int64) ([]any, error) {
+	p := map[string]string{"vmid": mid, "order": order, "mobi_app": "android", "ts": strconv.FormatInt(time.Now().Unix(), 10), "appkey": appKey}
+	if lastAid > 0 {
+		p["aid"] = strconv.FormatInt(lastAid, 10)
+	}
+	keys := make([]string, 0, len(p))
+	for k := range p {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	parts := make([]string, len(keys))
+	for i, k := range keys {
+		parts[i] = url.QueryEscape(k) + "=" + url.QueryEscape(p[k])
+	}
+	q := strings.Join(parts, "&")
+	sum := md5.Sum([]byte(q + appSec))
+	res, err := c.Get(ctx, "https://app.bilibili.com/x/v2/space/archive/cursor?"+q+"&sign="+hex.EncodeToString(sum[:]), spaceReferer)
+	if err != nil {
+		return nil, err
+	}
+	if err := codeErr(res, "space client"); err != nil {
+		return nil, err
+	}
+	return arr(obj(res, "data"), "item"), nil
 }

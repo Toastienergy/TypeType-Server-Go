@@ -22,6 +22,7 @@ func (s *Server) channelRoutes(rt *Router) {
 		var req struct {
 			URL      string `json:"url"`
 			NextPage string `json:"nextpage"`
+			Sort     string `json:"sort"`
 		}
 		if !decodeOr(w, r, &req, "Invalid request body") {
 			return
@@ -30,7 +31,7 @@ func (s *Server) channelRoutes(rt *Router) {
 			plain(w, r, http.StatusBadRequest, "Missing 'url' parameter")
 			return
 		}
-		s.channelPage(w, r, req.URL, req.NextPage)
+		s.channelPageSorted(w, r, req.URL, req.NextPage, req.Sort)
 	}))
 	rt.Handle("GET", "/channel/playlists", s.zones.channel.Limit(nil, func(w http.ResponseWriter, r *http.Request) {
 		raw := r.URL.Query().Get("url")
@@ -63,9 +64,21 @@ func (s *Server) channelRoutes(rt *Router) {
 }
 
 func (s *Server) channelPage(w http.ResponseWriter, r *http.Request, raw, page string) {
+	s.channelPageSorted(w, r, raw, page, "")
+}
+
+func (s *Server) channelPageSorted(w http.ResponseWriter, r *http.Request, raw, page, sort string) {
 	{
 		user, ok := s.publicAccess(w, r)
 		if !ok {
+			return
+		}
+		if strings.Contains(strings.ToLower(raw), "space.bilibili.com/") {
+			ch, ok := s.bilibiliChannel(r.Context(), w, r, raw, page, sort)
+			if !ok {
+				return
+			}
+			s.writeChannel(w, r, user, ch)
 			return
 		}
 		ch, err := s.YT.Channel(r.Context(), raw, page)
@@ -78,17 +91,21 @@ func (s *Server) channelPage(w http.ResponseWriter, r *http.Request, raw, page s
 			httpx.Error(w, r, http.StatusUnprocessableEntity, "Could not load this channel", "error")
 			return
 		}
-		if user != "" {
-			if blocked, err := s.blockedFilter(r, user); err == nil {
-				kept := ch.Videos[:0]
-				for _, v := range ch.Videos {
-					if !blocked(v) {
-						kept = append(kept, v)
-					}
-				}
-				ch.Videos = kept
-			}
-		}
-		httpx.JSON(w, http.StatusOK, ch)
+		s.writeChannel(w, r, user, ch)
 	}
+}
+
+func (s *Server) writeChannel(w http.ResponseWriter, r *http.Request, user string, ch *youtube.Channel) {
+	if user != "" {
+		if blocked, err := s.blockedFilter(r, user); err == nil {
+			kept := ch.Videos[:0]
+			for _, v := range ch.Videos {
+				if !blocked(v) {
+					kept = append(kept, v)
+				}
+			}
+			ch.Videos = kept
+		}
+	}
+	httpx.JSON(w, http.StatusOK, ch)
 }

@@ -75,6 +75,13 @@ func NewClient(h *http.Client) *Client {
 
 func (c *Client) UserAgent() string { return c.dev.ua }
 
+// Reset forges a new device and drops the visitor cookies, as PipePipe does after a risk-control answer.
+func (c *Client) Reset() {
+	c.mu.Lock()
+	c.dev, c.cookies, c.cookieExpires = forgeDevice(), "", 0
+	c.mu.Unlock()
+}
+
 func referer(orig string) string {
 	if u, err := url.Parse(orig); err == nil && u.Host != "" {
 		if r := "https://" + u.Host + "/"; r == wwwReferer || r == spaceReferer || r == liveReferer {

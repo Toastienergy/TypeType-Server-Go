@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"sort"
 	"strconv"
 	"time"
 
@@ -84,12 +85,18 @@ func (s *Server) writeRecPage(w http.ResponseWriter, r *http.Request, user strin
 		return
 	}
 	now := time.Now().UnixMilli()
+	focus := s.focusFor(r.Context(), user)
 	items := []youtube.VideoItem{}
 	for _, v := range page.Items {
-		if hidden(v) || dropFuture && startsLater(v, now) {
+		if hidden(v) || dropFuture && startsLater(v, now) || focus != nil && !focus.keepsFeedVideo(v) {
 			continue
 		}
 		items = append(items, v)
+	}
+	if focus != nil {
+		sort.SliceStable(items, func(i, j int) bool {
+			return focus.isStudy(items[i].UploaderURL) && !focus.isStudy(items[j].UploaderURL)
+		})
 	}
 	var next *string
 	if page.NextCursor != "" {

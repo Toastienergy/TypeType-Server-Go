@@ -379,6 +379,7 @@ func (s *Server) subscriptionFeed(w http.ResponseWriter, r *http.Request, user s
 		s.fail(w, r, err)
 		return
 	}
+	focus := s.focusFor(r.Context(), user)
 	var picked []youtube.VideoItem
 	for _, v := range snap.videos {
 		if st.HideSubscriptionLiveStreams && (v.IsLive || v.IsLiveContent && v.Duration < 0) || st.HideMembersOnlyContent && v.RequiresMembership {
@@ -387,7 +388,7 @@ func (s *Server) subscriptionFeed(w http.ResponseWriter, r *http.Request, user s
 		if allowed != nil && !anyIn(snap.sources[feedKey(v)], allowed) {
 			continue
 		}
-		if blocked(v) {
+		if blocked(v) || focus != nil && !focus.keepsFeedVideo(v) {
 			continue
 		}
 		picked = append(picked, v)

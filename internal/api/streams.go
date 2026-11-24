@@ -272,6 +272,22 @@ func (s *Server) youtubeStream(w http.ResponseWriter, r *http.Request, live bool
 			httpx.Error(w, r, http.StatusBadRequest, "URL does not match stream endpoint", "provider_mismatch")
 			return
 		}
+		user, ok := s.publicAccess(w, r)
+		if !ok {
+			return
+		}
+		hidden := func(youtube.VideoItem) bool { return false }
+		var focus *focusProfile
+		if user != "" && !strings.HasPrefix(user, "guest:") {
+			if h, err := s.blockedFilter(r, user); err == nil {
+				hidden = h
+			}
+			focus = s.focusFor(r.Context(), user)
+		}
+		if hidden(youtube.VideoItem{URL: raw}) {
+			httpx.Error(w, r, http.StatusForbidden, "Video is blocked", "content_blocked")
+			return
+		}
 		ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 		defer cancel()
 		infoc := make(chan *sabr.Info, 1)
@@ -292,8 +308,23 @@ func (s *Server) youtubeStream(w http.ResponseWriter, r *http.Request, live bool
 			return
 		}
 		resp := buildStream(id, raw, watch, in)
+		if hidden(youtube.VideoItem{URL: raw, UploaderURL: resp.UploaderURL, UploaderName: resp.UploaderName}) {
+			httpx.Error(w, r, http.StatusForbidden, "Channel is blocked", "content_blocked")
+			return
+		}
+		if b := focus.playbackBlock(resp.UploaderURL, resp.PublishedAt); b != nil {
+			b["channelUrl"], b["channelName"], b["channelAvatarUrl"], b["videoTitle"] = resp.UploaderURL, resp.UploaderName, resp.UploaderAvatarURL, resp.Title
+			b["requestId"] = httpx.RequestID(r.Context())
+			httpx.JSON(w, http.StatusForbidden, b)
+			return
+		}
 		if watch != nil && watch.Related != nil {
-			resp.RelatedStreams = watch.Related
+			resp.RelatedStreams = []youtube.VideoItem{}
+			for _, v := range focus.filter(watch.Related) {
+				if !hidden(v) {
+					resp.RelatedStreams = append(resp.RelatedStreams, v)
+				}
+			}
 		}
 		sb := <-sbc
 		resp.SponsorBlockSegments, resp.SponsorBlockAvailable = sb.segments, sb.available

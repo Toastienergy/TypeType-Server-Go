@@ -38,6 +38,33 @@ type Client struct {
 	mu   sync.Mutex
 	vis  string
 	at   time.Time
+	// commentTokens keeps the comments continuation of each video page fetched, so the comments that open right
+	// after the page skip a second /next.
+	commentTokens sync.Map
+}
+
+type tokenAt struct {
+	token string
+	at    time.Time
+}
+
+func (c *Client) rememberComments(videoID, token string) {
+	if token != "" {
+		c.commentTokens.Store(videoID, tokenAt{token, time.Now()})
+	}
+}
+
+func (c *Client) knownComments(videoID string) string {
+	v, ok := c.commentTokens.Load(videoID)
+	if !ok {
+		return ""
+	}
+	t := v.(tokenAt)
+	if time.Since(t.at) > 30*time.Minute {
+		c.commentTokens.Delete(videoID)
+		return ""
+	}
+	return t.token
 }
 
 func NewClient(proxy string) *Client {

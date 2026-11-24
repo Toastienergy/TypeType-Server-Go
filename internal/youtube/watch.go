@@ -97,6 +97,7 @@ func (c *Client) FetchWatch(ctx context.Context, id string) (*Watch, error) {
 	}
 	if n.err == nil {
 		parseNext(w, n.v, time.Now())
+		c.rememberComments(id, commentsToken(n.v))
 	}
 	return w, nil
 }

@@ -137,6 +137,7 @@ func (s *Server) Routes() (http.Handler, *Router) {
 	s.portabilityRoutes(rt)
 	s.takeoutRoutes(rt)
 	s.youtubeSessionRoutes(rt)
+	s.bilibiliSessionRoutes(rt)
 	s.pipePipeRoutes(rt)
 	s.recommenderAdminRoutes(rt)
 	s.uploadRoutes(rt)

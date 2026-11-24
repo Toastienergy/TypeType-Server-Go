@@ -15,6 +15,7 @@ import (
 	"typetype.dev/server/internal/httpx"
 	"typetype.dev/server/internal/sabr"
 	"typetype.dev/server/internal/store"
+	"typetype.dev/server/internal/youtube"
 )
 
 // Build data, set with -ldflags at release time.
@@ -36,6 +37,8 @@ type Server struct {
 	Admin    *store.Admin
 	Auth     *auth.Service
 	Sabr     *sabr.Store
+	YT       *youtube.Client
+	sponsor  *sponsorBlock
 	features features
 	zones    zones
 }
@@ -52,6 +55,7 @@ func New(cfg *config.Config, db *pgxpool.Pool, c *cache.Cache, log *slog.Logger)
 			MaxSessions: max(1, config.IntEnv("SABR_MAX_SESSIONS", 24)),
 			Idle:        time.Duration(max(60, config.IntEnv("SABR_IDLE_EVICTION_SECONDS", 240))) * time.Second,
 			BudgetBytes: int64(max(64, config.IntEnv("SABR_SESSION_BYTE_BUDGET_MB", 512))) << 20}),
+		YT: youtube.NewClient(cfg.YoutubeProxyURL), sponsor: newSponsorBlock(c),
 		zones: zones{
 			extraction: httpx.NewZone(60, w), dearrow: httpx.NewZone(600, w), streams: httpx.NewZone(360, w),
 			channel: httpx.NewZone(180, w), proxy: httpx.NewZone(6000, w), storyboard: httpx.NewZone(1200, w),
@@ -64,6 +68,7 @@ func (s *Server) Routes() (http.Handler, *Router) {
 	s.metaRoutes(rt)
 	s.authRoutes(rt)
 	s.sabrRoutes(rt)
+	s.streamRoutes(rt)
 	h := httpx.Gzip(rt.Handler())
 	h = httpx.CORS(s.Cfg.AllowedOrigins, s.Cfg.AllowAnyOrigin, h)
 	return httpx.Observe(s.Log, h), rt

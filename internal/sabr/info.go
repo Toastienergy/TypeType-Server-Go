@@ -87,6 +87,22 @@ type Info struct {
 	Title       string
 	Expires     time.Time
 	Live        bool
+	Meta        Meta
+}
+
+// Meta is the video metadata the token session carries along with the formats.
+type Meta struct {
+	Title         string   `json:"title"`
+	Author        string   `json:"author"`
+	ChannelID     string   `json:"channelId"`
+	ChannelAvatar string   `json:"channelAvatarUrl"`
+	Description   string   `json:"description"`
+	DurationMs    int64    `json:"durationMs"`
+	ViewCount     int64    `json:"viewCount"`
+	ThumbnailURL  string   `json:"thumbnailUrl"`
+	Tags          []string `json:"tags"`
+	IsLive        bool     `json:"isLive"`
+	IsLiveContent bool     `json:"isLiveContent"`
 }
 
 const (
@@ -105,6 +121,7 @@ type tokenSession struct {
 	DurationMs    int64    `json:"durationMs"`
 	HlsManifest   *string  `json:"hlsManifestUrl"`
 	TokenGenerate string   `json:"tokenGeneration"`
+	Metadata      Meta     `json:"metadata"`
 }
 
 // b64any decodes standard or URL-safe base64, padded or not.
@@ -124,7 +141,8 @@ func parseSession(videoID string, raw []byte) (*Info, error) {
 	}
 	in := &Info{VideoID: videoID, BaseURL: t.URL, Ustreamer: b64any(t.Ustreamer), PoToken: b64any(t.StreamingPot),
 		VisitorData: t.VisitorData, ClientID: mwebClientID, ClientVer: "2.20250122.04.00", UserAgent: mwebUA,
-		Formats: t.Formats, DurationMs: t.DurationMs, Title: t.Title, Live: t.HlsManifest != nil && *t.HlsManifest != ""}
+		Formats: t.Formats, DurationMs: t.DurationMs, Title: t.Title, Live: t.HlsManifest != nil && *t.HlsManifest != "",
+		Meta: t.Metadata}
 	if u, err := url.Parse(t.URL); err == nil {
 		if v := u.Query().Get("cver"); v != "" {
 			in.ClientVer = v

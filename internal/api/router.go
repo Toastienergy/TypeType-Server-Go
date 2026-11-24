@@ -143,6 +143,7 @@ func (n *node) find(segs []string, m *match) *node {
 }
 
 func (rt *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	stripAPIPrefix(r)
 	raw := r.URL.EscapedPath()
 	var m match
 	n := rt.root.find(strings.Split(strings.TrimPrefix(raw, "/"), "/"), &m)
@@ -206,4 +207,21 @@ func (rt *Router) Missing() []string {
 		seen[k] = true
 	}
 	return out
+}
+
+// stripAPIPrefix serves /api/... as /...: production puts the server behind a proxy that strips /api, and the
+// server writes /api/... media and feed URLs for that layout. A client that reaches the port directly (a LAN test)
+// finds the API under /api/ too, so those URLs stay inside the base it discovered.
+func stripAPIPrefix(r *http.Request) {
+	p := r.URL.Path
+	if p != "/api" && !strings.HasPrefix(p, "/api/") {
+		return
+	}
+	r.URL.Path = strings.TrimPrefix(p, "/api")
+	if r.URL.Path == "" {
+		r.URL.Path = "/"
+	}
+	if r.URL.RawPath != "" {
+		r.URL.RawPath = strings.TrimPrefix(r.URL.RawPath, "/api")
+	}
 }

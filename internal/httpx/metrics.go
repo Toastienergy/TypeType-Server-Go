@@ -3,6 +3,7 @@ package httpx
 import (
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -19,16 +20,16 @@ type Metrics struct {
 
 var Global = &Metrics{status: map[int]int64{}, routes: map[string]int64{}}
 
-func (m *Metrics) Record(path string, status int, ms int64) {
+func (m *Metrics) record(route string, status int, ms int64) {
 	m.total.Add(1)
 	m.durationMs.Add(ms)
-	key := MetricPath(path) + "|" + fmt.Sprint(status)
+	key := route + "|" + strconv.Itoa(status)
 	m.mu.Lock()
 	m.status[status]++
 	if _, ok := m.routes[key]; ok || len(m.routes) < 512 {
 		m.routes[key]++
 	} else {
-		m.routes["/__other__|"+fmt.Sprint(status)]++
+		m.routes["/__other__|"+strconv.Itoa(status)]++
 	}
 	m.mu.Unlock()
 }

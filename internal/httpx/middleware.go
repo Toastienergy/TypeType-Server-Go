@@ -3,6 +3,7 @@ package httpx
 import (
 	"context"
 	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -76,8 +77,10 @@ func Observe(log *slog.Logger, next http.Handler) http.Handler {
 				status = http.StatusOK
 			}
 			ms := time.Since(start).Milliseconds()
-			Global.Record(r.URL.Path, status, ms)
-			log.Info("call", "requestId", id, "method", r.Method, "path", MetricPath(r.URL.Path), "status", status, "durationMs", ms)
+			path := MetricPath(r.URL.Path)
+			Global.record(path, status, ms)
+			log.LogAttrs(r.Context(), slog.LevelInfo, "call", slog.String("requestId", id), slog.String("method", r.Method), slog.String("path", path),
+				slog.Int("status", status), slog.Int64("durationMs", ms))
 		}()
 		next.ServeHTTP(sw, r)
 	})
@@ -117,7 +120,17 @@ func uuid() string {
 	rand.Read(b[:])
 	b[6] = b[6]&0x0f | 0x40
 	b[8] = b[8]&0x3f | 0x80
-	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
+	var out [36]byte
+	hex.Encode(out[0:8], b[0:4])
+	out[8] = '-'
+	hex.Encode(out[9:13], b[4:6])
+	out[13] = '-'
+	hex.Encode(out[14:18], b[6:8])
+	out[18] = '-'
+	hex.Encode(out[19:23], b[8:10])
+	out[23] = '-'
+	hex.Encode(out[24:36], b[10:16])
+	return string(out[:])
 }
 
 // CORS follows the Ktor plugin as configured: listed origins (or *), credentials, Content-Type and Authorization

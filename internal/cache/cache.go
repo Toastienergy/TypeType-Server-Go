@@ -35,8 +35,18 @@ func Open(url string) (*Cache, error) {
 
 func (k *Cache) Close() { k.c.Close() }
 
+// opTimeout bounds every cache call: a Dragonfly that stops answering must look like a cache miss within a moment,
+// not hold the request until the client gives up. Writes run past a cancelled request so they still land.
+const opTimeout = 300 * time.Millisecond
+
+func bounded(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(ctx), opTimeout)
+}
+
 // Get returns ok=false when the key is absent; any other failure is an error the caller may ignore.
 func (k *Cache) Get(ctx context.Context, key string) (string, bool, error) {
+	ctx, cancel := bounded(ctx)
+	defer cancel()
 	v, err := k.c.Do(ctx, k.c.B().Get().Key(key).Build()).ToString()
 	if rueidis.IsRedisNil(err) {
 		return "", false, nil
@@ -45,10 +55,14 @@ func (k *Cache) Get(ctx context.Context, key string) (string, bool, error) {
 }
 
 func (k *Cache) Set(ctx context.Context, key, value string, ttl time.Duration) error {
+	ctx, cancel := bounded(ctx)
+	defer cancel()
 	return k.c.Do(ctx, k.c.B().Setex().Key(key).Seconds(seconds(ttl)).Value(value).Build()).Error()
 }
 
 func (k *Cache) SetIfAbsent(ctx context.Context, key, value string, ttl time.Duration) (bool, error) {
+	ctx, cancel := bounded(ctx)
+	defer cancel()
 	err := k.c.Do(ctx, k.c.B().Set().Key(key).Value(value).Nx().ExSeconds(seconds(ttl)).Build()).Error()
 	if rueidis.IsRedisNil(err) {
 		return false, nil
@@ -57,15 +71,21 @@ func (k *Cache) SetIfAbsent(ctx context.Context, key, value string, ttl time.Dur
 }
 
 func (k *Cache) RefreshIfValueMatches(ctx context.Context, key, value string, ttl time.Duration) (bool, error) {
+	ctx, cancel := bounded(ctx)
+	defer cancel()
 	n, err := refreshScript.Exec(ctx, k.c, []string{key}, []string{value, strconv.FormatInt(seconds(ttl), 10)}).AsInt64()
 	return n == 1, err
 }
 
 func (k *Cache) Increment(ctx context.Context, key string, ttl time.Duration) (int64, error) {
+	ctx, cancel := bounded(ctx)
+	defer cancel()
 	return incrementScript.Exec(ctx, k.c, []string{key}, []string{strconv.FormatInt(seconds(ttl), 10)}).AsInt64()
 }
 
 func (k *Cache) GetAndDelete(ctx context.Context, key string) (string, bool, error) {
+	ctx, cancel := bounded(ctx)
+	defer cancel()
 	v, err := k.c.Do(ctx, k.c.B().Getdel().Key(key).Build()).ToString()
 	if rueidis.IsRedisNil(err) {
 		return "", false, nil
@@ -74,6 +94,8 @@ func (k *Cache) GetAndDelete(ctx context.Context, key string) (string, bool, err
 }
 
 func (k *Cache) Delete(ctx context.Context, key string) error {
+	ctx, cancel := bounded(ctx)
+	defer cancel()
 	return k.c.Do(ctx, k.c.B().Del().Key(key).Build()).Error()
 }
 
@@ -100,6 +122,8 @@ func (k *Cache) DeleteMatching(ctx context.Context, pattern string) (int, error)
 }
 
 func (k *Cache) Ping(ctx context.Context) bool {
+	ctx, cancel := bounded(ctx)
+	defer cancel()
 	s, err := k.c.Do(ctx, k.c.B().Ping().Build()).ToString()
 	return err == nil && s == "PONG"
 }

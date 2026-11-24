@@ -91,6 +91,7 @@ func (s *Server) Routes() (http.Handler, *Router) {
 	s.notificationRoutes(rt)
 	s.avatarRoutes(rt)
 	s.focusRoutes(rt)
+	s.searchRoutes(rt)
 	h := httpx.Gzip(rt.Handler())
 	h = httpx.CORS(s.Cfg.AllowedOrigins, s.Cfg.AllowAnyOrigin, h)
 	return httpx.Observe(s.Log, h), rt

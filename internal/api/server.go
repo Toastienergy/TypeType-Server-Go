@@ -134,6 +134,7 @@ func (s *Server) Routes() (http.Handler, *Router) {
 	s.internalRoutes(rt)
 	s.egressResetRoute(rt)
 	s.backupRoutes(rt)
+	s.portabilityRoutes(rt)
 	s.pipePipeRoutes(rt)
 	s.recommenderAdminRoutes(rt)
 	s.uploadRoutes(rt)

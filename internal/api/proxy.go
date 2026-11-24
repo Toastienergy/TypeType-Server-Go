@@ -126,6 +126,19 @@ var copyBufs = sync.Pool{New: func() any { b := make([]byte, 64<<10); return &b 
 
 func (s *Server) proxyRoutes(rt *Router) {
 	rt.Handle("GET", "/proxy", s.zones.proxy.Limit(nil, s.proxy))
+	rt.Handle("GET", "/proxy/image", s.zones.storyboard.Limit(nil, func(w http.ResponseWriter, r *http.Request) {
+		raw := r.URL.Query().Get("url")
+		if !r.URL.Query().Has("url") {
+			plain(w, r, http.StatusBadRequest, "Missing 'url' parameter")
+			return
+		}
+		u, err := url.Parse(raw)
+		if err != nil || strings.ToLower(u.Hostname()) != "i.ytimg.com" || !strings.HasPrefix(strings.ToLower(u.Path), "/sb/") {
+			plain(w, r, http.StatusBadRequest, "Not a storyboard URL")
+			return
+		}
+		s.proxy(w, r)
+	}))
 }
 
 func (s *Server) proxy(w http.ResponseWriter, r *http.Request) {

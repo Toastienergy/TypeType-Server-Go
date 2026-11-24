@@ -43,9 +43,9 @@ func niconicoSearchItem(o map[string]any) youtube.VideoItem {
 	return it
 }
 
-func (s *Server) niconicoSearch(ctx context.Context, w http.ResponseWriter, r *http.Request, q, filter, next string) (youtube.SearchPage, bool) {
+func (s *Server) niconicoSearch(ctx context.Context, w http.ResponseWriter, r *http.Request, q string, sel searchSelection, next string) (youtube.SearchPage, bool) {
 	out := youtube.SearchPage{Items: []youtube.VideoItem{}, Playlists: []youtube.PlaylistResult{}, Channels: []youtube.ChannelResult{}}
-	pg := biliPage{Q: q, Type: "video", Page: 1}
+	pg := biliPage{Q: q, Type: "video", Page: 1, Extra: sel.niconicoQuery()}
 	switch {
 	case next != "":
 		b, err := base64.RawURLEncoding.DecodeString(strings.TrimPrefix(next, "nico1."))
@@ -53,15 +53,11 @@ func (s *Server) niconicoSearch(ctx context.Context, w http.ResponseWriter, r *h
 			plain(w, r, http.StatusBadRequest, "Invalid page")
 			return out, false
 		}
-	case filter == "" || filter == "|0|all":
-	case filter == "|1|lives" || filter == "|2|playlists":
+	case sel.content.name != "all":
 		notWritten(w, r)
 		return out, false
-	default:
-		plain(w, r, http.StatusBadRequest, "Unknown content filter")
-		return out, false
 	}
-	items, err := s.nico.Search(ctx, pg.Q, pg.Page)
+	items, err := s.nico.Search(ctx, pg.Q, pg.Extra, pg.Page)
 	if err != nil {
 		httpx.Error(w, r, http.StatusUnprocessableEntity, "Search failed", "error")
 		return out, false
@@ -70,7 +66,7 @@ func (s *Server) niconicoSearch(ctx context.Context, w http.ResponseWriter, r *h
 		out.Items = append(out.Items, niconicoSearchItem(o))
 	}
 	if len(items) > 0 {
-		b, _ := json.Marshal(biliPage{Q: pg.Q, Type: pg.Type, Page: pg.Page + 1})
+		b, _ := json.Marshal(biliPage{Q: pg.Q, Type: pg.Type, Page: pg.Page + 1, Extra: pg.Extra})
 		n := "nico1." + base64.RawURLEncoding.EncodeToString(b)
 		out.NextPage = &n
 	}

@@ -38,22 +38,33 @@ func (s *Server) searchRoutes(rt *Router) {
 		if !ok {
 			return
 		}
+		tree := filtersFor(svc)
+		if tree == nil {
+			notWritten(w, r)
+			return
+		}
+		sel, ok := selectFilters(w, r, tree)
+		if !ok {
+			return
+		}
+		next := r.URL.Query().Get("nextpage")
 		var page youtube.SearchPage
 		var err error
 		switch svc {
 		case 0:
-			page, err = s.YT.Search(r.Context(), q, r.URL.Query().Get("contentFilter"), r.URL.Query().Get("nextpage"))
+			if sel.content.field == ytMusic {
+				notWritten(w, r)
+				return
+			}
+			page, err = s.YT.Search(r.Context(), q, youtubeSP(sel.content, sel.sorts), next)
 		case 5:
-			if page, ok = s.bilibiliSearch(r.Context(), w, r, q, r.URL.Query().Get("contentFilter"), r.URL.Query().Get("nextpage")); !ok {
+			if page, ok = s.bilibiliSearch(r.Context(), w, r, q, sel, next); !ok {
 				return
 			}
 		case 6:
-			if page, ok = s.niconicoSearch(r.Context(), w, r, q, r.URL.Query().Get("contentFilter"), r.URL.Query().Get("nextpage")); !ok {
+			if page, ok = s.niconicoSearch(r.Context(), w, r, q, sel, next); !ok {
 				return
 			}
-		default:
-			notWritten(w, r)
-			return
 		}
 		if errors.Is(err, youtube.ErrBadPage) {
 			plain(w, r, http.StatusBadRequest, "Invalid page")
@@ -85,8 +96,13 @@ func (s *Server) searchRoutes(rt *Router) {
 			}
 			page.Channels = kept
 		}
+		if sel.contentGiven {
+			// Without one, Bilibili's default is videos, and the channel its aggregated search adds stays.
+			kindFilter(&page, sel.content.name)
+		}
 		httpx.JSON(w, http.StatusOK, page)
 	}))
+	rt.Handle("GET", "/search/filters", s.searchFilters)
 	rt.Handle("GET", "/suggestions", s.zones.extraction.Limit(nil, func(w http.ResponseWriter, r *http.Request) {
 		if _, ok := s.publicAccess(w, r); !ok {
 			return

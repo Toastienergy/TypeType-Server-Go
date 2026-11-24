@@ -41,10 +41,8 @@ type SearchPage struct {
 	Channels         []ChannelResult  `json:"channels"`
 }
 
-var searchParams = map[string]string{"videos": "EgIQAQ==", "channels": "EgIQAg==", "playlists": "EgIQAw==", "lives": "EgJAAQ=="}
-
-// Search runs a YouTube search; contentFilter is the PipePipe filter name ("all", "videos", "channels"...).
-func (c *Client) Search(ctx context.Context, query, contentFilter, page string) (SearchPage, error) {
+// Search runs a YouTube search with the search params PipePipe's filters encode.
+func (c *Client) Search(ctx context.Context, query, params, page string) (SearchPage, error) {
 	out := SearchPage{Items: []VideoItem{}, Playlists: []PlaylistResult{}, Channels: []ChannelResult{}}
 	var res map[string]any
 	var err error
@@ -56,8 +54,8 @@ func (c *Client) Search(ctx context.Context, query, contentFilter, page string) 
 		res, err = c.Call(ctx, Web, "search", map[string]any{"continuation": token})
 	} else {
 		body := map[string]any{"query": query}
-		if p := searchParams[contentFilter]; p != "" {
-			body["params"] = p
+		if params != "" {
+			body["params"] = params
 		}
 		res, err = c.Call(ctx, Web, "search", body)
 	}

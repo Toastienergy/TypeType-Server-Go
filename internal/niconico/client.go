@@ -285,9 +285,13 @@ func (c *Client) Trending(ctx context.Context) ([]map[string]any, error) {
 	return out, nil
 }
 
-// Search reads one page of video results from the search page's server-response data (sort=h, newest-popular).
-func (c *Client) Search(ctx context.Context, keyword string, page int) ([]map[string]any, error) {
-	u := "https://www.nicovideo.jp/search/" + url.PathEscape(keyword) + "?sort=h&order=d&page=" + strconv.Itoa(page)
+// Search reads one page of video results from the search page's server-response data; sortQuery defaults to
+// PipePipe's sort=h&order=d.
+func (c *Client) Search(ctx context.Context, keyword, sortQuery string, page int) ([]map[string]any, error) {
+	if sortQuery == "" {
+		sortQuery = "sort=h&order=d"
+	}
+	u := "https://www.nicovideo.jp/search/" + url.PathEscape(keyword) + "?" + sortQuery + "&page=" + strconv.Itoa(page)
 	req, _ := http.NewRequestWithContext(ctx, "GET", u, nil)
 	req.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
 	req.Header.Set("Accept-Language", "ja-JP")

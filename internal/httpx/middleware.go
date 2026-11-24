@@ -75,8 +75,9 @@ func Observe(log *slog.Logger, next http.Handler) http.Handler {
 			if !sw.wrote {
 				status = http.StatusOK
 			}
-			log.Info("call", "requestId", id, "method", r.Method, "path", MetricPath(r.URL.Path), "status", status,
-				"durationMs", time.Since(start).Milliseconds())
+			ms := time.Since(start).Milliseconds()
+			Global.Record(r.URL.Path, status, ms)
+			log.Info("call", "requestId", id, "method", r.Method, "path", MetricPath(r.URL.Path), "status", status, "durationMs", ms)
 		}()
 		next.ServeHTTP(sw, r)
 	})

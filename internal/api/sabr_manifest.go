@@ -23,6 +23,7 @@ var tokenVideoRe = regexp.MustCompile(`(?:[?&]v=|/shorts/|youtu\.be/)([A-Za-z0-9
 
 func (s *Server) sabrManifestRoutes(rt *Router) {
 	rt.Handle("GET", "/sabr/manifest/{videoId}", s.sabrManifest)
+	rt.Handle("GET", "/sabr/download/{videoId}", s.sabrDownload)
 	rt.Handle("GET", "/sabr/playback/{sessionId}/manifest", s.playbackManifest)
 	rt.Handle("GET", "/sabr/{videoId}/{itag}/init", s.legacyMedia(true))
 	rt.Handle("GET", "/sabr/{videoId}/{itag}/segment/{seq}", s.legacyMedia(false))
@@ -61,53 +62,8 @@ func (s *Server) sabrManifest(w http.ResponseWriter, r *http.Request) {
 		s.writeMediaPlaylist(w, r, ss, f)
 		return
 	}
-	var tok audioToken
-	owner := videoID
-	if raw := q.Get("audioToken"); raw != "" {
-		t, msg := s.verifyAudioToken(raw)
-		if msg == "" {
-			if m := tokenVideoRe.FindStringSubmatch(t.VideoURL); m == nil || m[1] != videoID {
-				msg = "Invalid audio-only token"
-			}
-		}
-		if msg != "" {
-			plain(w, r, http.StatusUnauthorized, msg)
-			return
-		}
-		tok = t
-		if t.UserID != "" {
-			owner = t.UserID
-		}
-	} else {
-		if _, fail := s.streamFor(r, "https://www.youtube.com/watch?v="+videoID); fail != nil {
-			relay(w, fail)
-			return
-		}
-		if u := s.optionalUserID(r); u != "" {
-			owner = u
-		}
-	}
-	ctx, cancel := context.WithTimeout(r.Context(), sabrInfoTimeout)
-	info, err := s.Sabr.Token().Info(ctx, videoID)
-	cancel()
-	if err != nil {
-		plain(w, r, http.StatusUnprocessableEntity, "SABR probe failed")
-		return
-	}
-	itag, _ := strconv.Atoi(q.Get("audioItag"))
-	track := q.Get("audioTrackId")
-	if tok.Itag != 0 {
-		itag, track = tok.Itag, tok.TrackID
-	}
-	audio := info.SelectAudio(itag, track)
-	if audio == nil {
-		httpx.Error(w, r, http.StatusUnprocessableEntity, "No SABR audio for this video", "no_playable_streams")
-		return
-	}
-	vitag, _ := strconv.Atoi(q.Get("videoItag"))
-	video := info.SelectVideo(vitag)
-	if video == nil {
-		httpx.Error(w, r, http.StatusUnprocessableEntity, "No SABR video for this video", "no_playable_streams")
+	info, audio, video, owner, ok := s.sabrSelect(w, r, videoID)
+	if !ok {
 		return
 	}
 	start, _ := strconv.ParseInt(q.Get("startTimeMs"), 10, 64)
@@ -209,4 +165,60 @@ func (s *Server) legacyMedia(isInit bool) http.HandlerFunc {
 		}
 		writeMedia(w, r, containerMime(f.MimeType), seg.Data())
 	}
+}
+
+// sabrSelect is the shared front of SabrManifestHandler: an audio-only token or the stream guard, the SABR info, and
+// the audio and video formats the query or the token asks for. It answers the error itself when ok is false.
+func (s *Server) sabrSelect(w http.ResponseWriter, r *http.Request, videoID string) (info *sabr.Info, audio, video *sabr.Format, owner string, ok bool) {
+	q := r.URL.Query()
+	var tok audioToken
+	owner = videoID
+	if raw := q.Get("audioToken"); raw != "" {
+		t, msg := s.verifyAudioToken(raw)
+		if msg == "" {
+			if m := tokenVideoRe.FindStringSubmatch(t.VideoURL); m == nil || m[1] != videoID {
+				msg = "Invalid audio-only token"
+			}
+		}
+		if msg != "" {
+			plain(w, r, http.StatusUnauthorized, msg)
+			return nil, nil, nil, "", false
+		}
+		tok = t
+		if t.UserID != "" {
+			owner = t.UserID
+		}
+	} else {
+		if _, fail := s.streamFor(r, "https://www.youtube.com/watch?v="+videoID); fail != nil {
+			relay(w, fail)
+			return nil, nil, nil, "", false
+		}
+		if u := s.optionalUserID(r); u != "" {
+			owner = u
+		}
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), sabrInfoTimeout)
+	info, err := s.Sabr.Token().Info(ctx, videoID)
+	cancel()
+	if err != nil {
+		plain(w, r, http.StatusUnprocessableEntity, "SABR probe failed")
+		return nil, nil, nil, "", false
+	}
+	itag, _ := strconv.Atoi(q.Get("audioItag"))
+	track := q.Get("audioTrackId")
+	if tok.Itag != 0 {
+		itag, track = tok.Itag, tok.TrackID
+	}
+	audio = info.SelectAudio(itag, track)
+	if audio == nil {
+		httpx.Error(w, r, http.StatusUnprocessableEntity, "No SABR audio for this video", "no_playable_streams")
+		return nil, nil, nil, "", false
+	}
+	vitag, _ := strconv.Atoi(q.Get("videoItag"))
+	video = info.SelectVideo(vitag)
+	if video == nil {
+		httpx.Error(w, r, http.StatusUnprocessableEntity, "No SABR video for this video", "no_playable_streams")
+		return nil, nil, nil, "", false
+	}
+	return info, audio, video, owner, true
 }

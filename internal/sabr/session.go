@@ -244,7 +244,14 @@ func (s *Session) Init(ctx context.Context, itag int, timeout time.Duration) ([]
 	}
 }
 
+// trackFor finds the track of itag. An audio-only media (a voice reply) names its audio format in both slots, as
+// the Kotlin server does, so an audio-only session looks at the audio track first.
 func (s *Session) trackFor(itag int) *track {
+	if s.AudioOnly {
+		if t := s.tracks[audioTrack]; t != nil && t.f.Itag == itag {
+			return t
+		}
+	}
 	for _, t := range s.tracks {
 		if t != nil && t.f.Itag == itag {
 			return t

@@ -1,0 +1,254 @@
+// Package niconico reads NicoNico videos the way PipePipe's NiconicoStreamExtractor does: the watch page's
+// server-response data, an HLS access right that sets the domand_bid cookie, and the master playlist it unlocks.
+package niconico
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"html"
+	"io"
+	"net/http"
+	"regexp"
+	"strconv"
+	"strings"
+	"time"
+)
+
+const firefoxUA = "Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/119.0"
+
+var (
+	ErrUnavailable = errors.New("niconico video unavailable")
+	IDRe           = regexp.MustCompile(`(?i)\b((?:sm|so|nm)[0-9]+)\b`)
+	serverResp     = regexp.MustCompile(`<meta name="server-response" content="([^"]*)"`)
+	audioURIRe     = regexp.MustCompile(`#EXT-X-MEDIA:TYPE=AUDIO[^\n]*?URI="([^"]+)"`)
+	kbpsRe         = regexp.MustCompile(`audio-[a-z0-9]+-(\d+)kbps`)
+	resRe          = regexp.MustCompile(`video-[a-z0-9]+-(\d+p)`)
+)
+
+type Client struct{ http *http.Client }
+
+func NewClient(h *http.Client) *Client {
+	if h == nil {
+		h = &http.Client{Timeout: 20 * time.Second}
+	}
+	return &Client{http: h}
+}
+
+type Variant struct {
+	URL        string
+	Resolution string
+	Kbps       int64
+}
+
+type Video struct {
+	ID, Title, Description, Thumbnail string
+	OwnerName, OwnerURL, OwnerIcon    string
+	Views, Likes, Duration            int64
+	Registered                        time.Time
+	Tags                              []string
+	Bid                               string
+	Videos, Audios                    []Variant
+}
+
+func dig(v any, keys ...string) any {
+	for _, k := range keys {
+		m, ok := v.(map[string]any)
+		if !ok {
+			return nil
+		}
+		v = m[k]
+	}
+	return v
+}
+
+func s(v any, keys ...string) string { x, _ := dig(v, keys...).(string); return x }
+func n(v any, keys ...string) int64  { x, _ := dig(v, keys...).(float64); return int64(x) }
+
+func (c *Client) watchData(ctx context.Context, id string) (map[string]any, error) {
+	req, _ := http.NewRequestWithContext(ctx, "GET", "https://www.nicovideo.jp/watch/"+id, nil)
+	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)")
+	req.Header.Set("Accept-Language", "ja-JP")
+	res, err := c.http.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(res.Body, 8<<20))
+	if err != nil {
+		return nil, err
+	}
+	m := serverResp.FindSubmatch(body)
+	if m == nil {
+		switch {
+		case bytes.Contains(body, []byte("チャンネル会員専用動画")):
+			return nil, fmt.Errorf("%w: channel members only", ErrUnavailable)
+		case bytes.Contains(body, []byte("地域と同じ地域からのみ視聴")):
+			return nil, fmt.Errorf("%w: region restricted", ErrUnavailable)
+		}
+		return nil, fmt.Errorf("%w: login required or removed", ErrUnavailable)
+	}
+	var root map[string]any
+	if err := json.Unmarshal([]byte(html.UnescapeString(string(m[1]))), &root); err != nil {
+		return nil, err
+	}
+	resp, _ := dig(root, "data", "response").(map[string]any)
+	if v4, ok := resp["$watchV4"].(map[string]any); ok {
+		resp, _ = v4["data"].(map[string]any)
+	}
+	if resp == nil {
+		return nil, fmt.Errorf("%w: no watch data", ErrUnavailable)
+	}
+	if s(resp, "errorCode") == "FORBIDDEN" {
+		return nil, fmt.Errorf("%w: %s", ErrUnavailable, s(resp, "reasonCode"))
+	}
+	if s(resp, "okReason") == "PAYMENT_PREVIEW_SUPPORTED" {
+		return nil, fmt.Errorf("%w: paid content", ErrUnavailable)
+	}
+	return resp, nil
+}
+
+// Watch loads a video and the HLS variants its access right unlocks; every variant needs the returned bid cookie.
+func (c *Client) Watch(ctx context.Context, id string) (*Video, error) {
+	w, err := c.watchData(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	v := &Video{ID: id, Title: s(w, "video", "title"), Description: s(w, "video", "description"), Views: n(w, "video", "count", "view"),
+		Likes: n(w, "video", "count", "like"), Duration: n(w, "video", "duration")}
+	v.Thumbnail = s(w, "video", "thumbnail", "ogp")
+	if v.Thumbnail == "" {
+		v.Thumbnail = s(w, "video", "thumbnail", "url")
+	}
+	if t, err := time.Parse(time.RFC3339, s(w, "video", "registeredAt")); err == nil {
+		v.Registered = t
+	}
+	if owner, ok := dig(w, "owner").(map[string]any); ok && owner != nil {
+		v.OwnerName, v.OwnerIcon = s(owner, "nickname"), s(owner, "iconUrl")
+		if id := n(owner, "id"); id > 0 {
+			v.OwnerURL = "https://www.nicovideo.jp/user/" + strconv.FormatInt(id, 10)
+		}
+	} else if ch, ok := dig(w, "channel").(map[string]any); ok && ch != nil {
+		v.OwnerName, v.OwnerIcon = s(ch, "name"), s(ch, "thumbnail", "url")
+		if cid := s(ch, "id"); cid != "" {
+			v.OwnerURL = "https://ch.nicovideo.jp/" + cid
+		}
+	}
+	tags, _ := dig(w, "tag", "items").([]any)
+	for _, t := range tags {
+		if name := s(t, "name"); name != "" {
+			v.Tags = append(v.Tags, name)
+		}
+	}
+	media, _ := dig(w, "media").(map[string]any)
+	contents, _ := media["contents"].(map[string]any)
+	if contents == nil {
+		contents, _ = media["domand"].(map[string]any)
+	}
+	key := s(media, "accessRightKey")
+	if key == "" {
+		key = s(media, "domand", "accessRightKey")
+	}
+	var videos []string
+	audio := ""
+	for _, x := range func() []any { a, _ := contents["videos"].([]any); return a }() {
+		if ok, _ := dig(x, "isAvailable").(bool); ok {
+			videos = append(videos, s(x, "id"))
+		}
+	}
+	for _, x := range func() []any { a, _ := contents["audios"].([]any); return a }() {
+		if ok, _ := dig(x, "isAvailable").(bool); ok && audio == "" {
+			audio = s(x, "id")
+		}
+	}
+	if audio == "" || key == "" {
+		return nil, fmt.Errorf("%w: no available stream", ErrUnavailable)
+	}
+	outputs := make([][2]string, len(videos))
+	for i, vid := range videos {
+		outputs[i] = [2]string{vid, audio}
+	}
+	body, _ := json.Marshal(map[string]any{"outputs": outputs})
+	track := s(w, "client", "watchTrackId")
+	req, _ := http.NewRequestWithContext(ctx, "POST", "https://nvapi.nicovideo.jp/v1/watch/"+id+"/access-rights/hls?actionTrackId="+track, bytes.NewReader(body))
+	for k, val := range map[string]string{"User-Agent": firefoxUA, "Accept": "*/*", "Accept-Language": "en-US,en;q=0.5", "Referer": "https://www.nicovideo.jp/",
+		"Content-Type": "application/json", "X-Request-With": "https://www.nicovideo.jp", "X-Access-Right-Key": key, "X-Frontend-Id": "6",
+		"X-Frontend-Version": "0"} {
+		req.Header.Set(k, val)
+	}
+	res, err := c.http.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	var rights struct {
+		Data struct {
+			ContentURL string `json:"contentUrl"`
+		} `json:"data"`
+	}
+	err = json.NewDecoder(io.LimitReader(res.Body, 1<<20)).Decode(&rights)
+	res.Body.Close()
+	if res.StatusCode/100 != 2 || err != nil || rights.Data.ContentURL == "" {
+		return nil, fmt.Errorf("niconico access rights: HTTP %d", res.StatusCode)
+	}
+	for _, ck := range res.Cookies() {
+		if ck.Name == "domand_bid" {
+			v.Bid = ck.Value
+		}
+	}
+	mreq, _ := http.NewRequestWithContext(ctx, "GET", rights.Data.ContentURL, nil)
+	mreq.Header.Set("User-Agent", firefoxUA)
+	mreq.Header.Set("Referer", "https://www.nicovideo.jp/")
+	mreq.Header.Set("Origin", "https://www.nicovideo.jp")
+	if v.Bid != "" {
+		mreq.Header.Set("Cookie", "domand_bid="+v.Bid)
+	}
+	mres, err := c.http.Do(mreq)
+	if err != nil {
+		return nil, err
+	}
+	master, err := io.ReadAll(io.LimitReader(mres.Body, 4<<20))
+	mres.Body.Close()
+	if mres.StatusCode/100 != 2 || err != nil {
+		return nil, fmt.Errorf("niconico master playlist: HTTP %d", mres.StatusCode)
+	}
+	for _, m := range audioURIRe.FindAllStringSubmatch(string(master), -1) {
+		a := Variant{URL: m[1]}
+		if k := kbpsRe.FindStringSubmatch(m[1]); k != nil {
+			a.Kbps, _ = strconv.ParseInt(k[1], 10, 64)
+		}
+		v.Audios = append(v.Audios, a)
+	}
+	for _, line := range strings.Split(string(master), "\n") {
+		t := strings.TrimSpace(line)
+		if strings.HasPrefix(t, "https://") && strings.Contains(t, ".m3u8") {
+			vv := Variant{URL: t}
+			if r := resRe.FindStringSubmatch(t); r != nil {
+				vv.Resolution = r[1]
+			}
+			v.Videos = append(v.Videos, vv)
+		}
+	}
+	return v, nil
+}
+
+// Related is the watch page's recommendation list.
+func (c *Client) Related(ctx context.Context, id string) ([]map[string]any, error) {
+	req, _ := http.NewRequestWithContext(ctx, "GET", "https://nvapi.nicovideo.jp/v1/recommend?recipeId=video_watch_recommendation&site=nicovideo&_frontendId=6&_frontendVersion=0&videoId="+id, nil)
+	req.Header.Set("Accept-Language", "ja-JP")
+	res, err := c.http.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	var out struct {
+		Data struct {
+			Items []map[string]any `json:"items"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(io.LimitReader(res.Body, 4<<20)).Decode(&out); err != nil {
+		return nil, err
+	}
+	return out.Data.Items, nil
+}

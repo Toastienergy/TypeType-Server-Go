@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -153,6 +154,17 @@ func (s *Server) pipeMedia(w http.ResponseWriter, r *http.Request, urls []string
 			return
 		}
 		h := w.Header()
+		if isHLSResponse(res.Header.Get("Content-Type"), target) && proxyProvider(u.Hostname()) != "youtube" {
+			body, err := readHLS(res)
+			if err != nil {
+				httpx.Error(w, r, http.StatusUnprocessableEntity, "Proxy fetch failed", "error")
+				return
+			}
+			h.Set("Content-Type", res.Header.Get("Content-Type"))
+			w.WriteHeader(res.StatusCode)
+			io.WriteString(w, s.rewriteProviderHLS(r.Context(), body, target, bid))
+			return
+		}
 		ct := res.Header.Get("Content-Type")
 		if ct == "" {
 			ct = "application/octet-stream"

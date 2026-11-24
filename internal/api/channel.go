@@ -33,6 +33,7 @@ func (s *Server) channelRoutes(rt *Router) {
 		}
 		s.channelPageSorted(w, r, req.URL, req.NextPage, req.Sort)
 	}))
+	rt.Handle("GET", "/channel/posts", s.zones.channel.Limit(nil, s.channelPosts))
 	rt.Handle("GET", "/channel/playlists", s.zones.channel.Limit(nil, func(w http.ResponseWriter, r *http.Request) {
 		raw := r.URL.Query().Get("url")
 		if raw == "" {

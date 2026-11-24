@@ -287,3 +287,17 @@ func (p *focusProfile) playbackBlock(uploader string, at *int64) map[string]any 
 	}
 	return body("Focus mode restricts videos outside your study group", "focus_channel_blocked")
 }
+
+// channelBlock is respondIfFocusBlocksChannel's body: nil for an entertainment or study channel, otherwise the
+// study cooling-off or the outside-study refusal.
+func (p *focusProfile) channelBlock(channel, name string) map[string]any {
+	if p == nil || !p.strict || p.isEntertainment(channel) || p.isStudy(channel) {
+		return nil
+	}
+	b := map[string]any{"error": "Focus mode restricts videos outside your study group", "code": "focus_channel_blocked", "channelUrl": channel,
+		"channelName": name, "channelAvatarUrl": "", "videoTitle": "", "unlockAt": nil}
+	if unlock, ok := p.pending[channelKey(channel)]; ok {
+		b["error"], b["code"], b["unlockAt"] = "This channel is cooling off before joining your study group", "focus_study_pending", unlock
+	}
+	return b
+}

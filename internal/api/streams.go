@@ -148,6 +148,10 @@ func (s *Server) streamRoutes(rt *Router) {
 	rt.Handle("GET", "/streams/youtube/sabr", func(w http.ResponseWriter, r *http.Request) { s.youtubeStream(w, r, false) })
 	rt.Handle("GET", "/streams/youtube/live", func(w http.ResponseWriter, r *http.Request) { s.youtubeStream(w, r, true) })
 	rt.Handle("GET", "/streams/youtube/sabr/bootstrap", s.youtubeBootstrap)
+	rt.Handle("GET", "/streams/audio-only", s.audioOnly)
+	rt.Handle("GET", "/streams/audio-only/source", s.audioSource)
+	rt.Handle("HEAD", "/streams/audio-only/source", s.audioSource)
+	s.sabrManifestRoutes(rt)
 }
 
 // youtubeBootstrap answers from the token session alone, like SabrBootstrapStreamService: what the player needs

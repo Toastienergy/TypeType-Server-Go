@@ -94,24 +94,26 @@ func (s *Server) mediaPath(ctx context.Context, raw string, alternates []string,
 }
 
 func (s *Server) mediaRoutes(rt *Router) {
-	rt.Handle("GET", "/media/{handle}", func(w http.ResponseWriter, r *http.Request) {
-		handle := r.PathValue("handle")
-		if !mediaHandleRe.MatchString(handle) {
-			httpx.Error(w, r, http.StatusNotFound, "Media handle has expired or is unknown", "media_handle_not_found")
-			return
-		}
-		v, ok, err := s.Cache.Get(r.Context(), "provider-media:v1:"+handle)
-		if err != nil {
-			httpx.Error(w, r, http.StatusServiceUnavailable, "Media handle service is unavailable", "media_handle_unavailable")
-			return
-		}
-		var t mediaTarget
-		if !ok || json.Unmarshal([]byte(v), &t) != nil {
-			httpx.Error(w, r, http.StatusNotFound, "Media handle has expired or is unknown", "media_handle_not_found")
-			return
-		}
-		s.pipeMedia(w, r, append([]string{t.URL}, t.Alternates...), t.DomandBid)
-	})
+	rt.Handle("GET", "/media/{handle}", s.serveMedia)
+}
+
+func (s *Server) serveMedia(w http.ResponseWriter, r *http.Request) {
+	handle := r.PathValue("handle")
+	if !mediaHandleRe.MatchString(handle) {
+		httpx.Error(w, r, http.StatusNotFound, "Media handle has expired or is unknown", "media_handle_not_found")
+		return
+	}
+	v, ok, err := s.Cache.Get(r.Context(), "provider-media:v1:"+handle)
+	if err != nil {
+		httpx.Error(w, r, http.StatusServiceUnavailable, "Media handle service is unavailable", "media_handle_unavailable")
+		return
+	}
+	var t mediaTarget
+	if !ok || json.Unmarshal([]byte(v), &t) != nil {
+		httpx.Error(w, r, http.StatusNotFound, "Media handle has expired or is unknown", "media_handle_not_found")
+		return
+	}
+	s.pipeMedia(w, r, append([]string{t.URL}, t.Alternates...), t.DomandBid)
 }
 
 // pipeMedia streams the first address that answers, keeping the client's Range, and moves on to the next mirror

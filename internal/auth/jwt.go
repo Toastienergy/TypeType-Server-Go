@@ -87,3 +87,18 @@ func Verify(secret []byte, token string, now time.Time) (Claims, error) {
 	}
 	return raw.Claims, nil
 }
+
+// SignAny signs any JSON claims set with HS256, for tokens that are not sessions (the OIDC state).
+func SignAny(secret []byte, claims any) string {
+	payload, _ := json.Marshal(claims)
+	unsigned := encodedHeader + "." + b64.EncodeToString(payload)
+	return unsigned + "." + b64.EncodeToString(mac(secret, unsigned))
+}
+
+// VerifyPayload runs Verify and answers the raw payload, for callers that read their own claims.
+func VerifyPayload(secret []byte, token string, now time.Time) ([]byte, error) {
+	if _, err := Verify(secret, token, now); err != nil {
+		return nil, err
+	}
+	return b64.DecodeString(strings.Split(token, ".")[1])
+}

@@ -42,6 +42,7 @@ type Server struct {
 	proxyClient *http.Client
 	notices     *noticeHub
 	activity    *activity
+	feeds       *feeds
 	features    features
 	zones       zones
 }
@@ -52,7 +53,7 @@ type zones struct {
 
 func New(cfg *config.Config, db *pgxpool.Pool, c *cache.Cache, log *slog.Logger) *Server {
 	w := time.Minute
-	return &Server{Cfg: cfg, DB: db, Cache: c, Log: log, Admin: store.NewAdmin(db),
+	srv := &Server{Cfg: cfg, DB: db, Cache: c, Log: log, Admin: store.NewAdmin(db),
 		Auth: auth.NewService(db, cfg.JWTSecret, auth.SessionConfigFromEnv()), features: loadFeatures(cfg),
 		Sabr: sabr.NewStore(sabr.Options{TokenURL: cfg.SubtitleService, ProxyURL: cfg.YoutubeProxyURL,
 			MaxSessions: max(1, config.IntEnv("SABR_MAX_SESSIONS", 24)),
@@ -64,6 +65,8 @@ func New(cfg *config.Config, db *pgxpool.Pool, c *cache.Cache, log *slog.Logger)
 			channel: httpx.NewZone(180, w), proxy: httpx.NewZone(6000, w), storyboard: httpx.NewZone(1200, w),
 			userData: httpx.NewZone(120, w),
 		}}
+	srv.feeds = newFeeds(srv)
+	return srv
 }
 
 func (s *Server) Routes() (http.Handler, *Router) {
@@ -83,6 +86,7 @@ func (s *Server) Routes() (http.Handler, *Router) {
 	s.collectionRoutes(rt)
 	s.playlistRoutes(rt)
 	s.channelRoutes(rt)
+	s.feedRoutes(rt)
 	h := httpx.Gzip(rt.Handler())
 	h = httpx.CORS(s.Cfg.AllowedOrigins, s.Cfg.AllowAnyOrigin, h)
 	return httpx.Observe(s.Log, h), rt

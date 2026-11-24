@@ -543,4 +543,4 @@ func (s *Server) deleteRow(w http.ResponseWriter, r *http.Request, q string, arg
 }
 
 // feedChanged drops what the subscription feed derived from the user's channels; the feed rebuilds on next read.
-func (s *Server) feedChanged(user string) {}
+func (s *Server) feedChanged(user string) { s.feeds.invalidate(user) }

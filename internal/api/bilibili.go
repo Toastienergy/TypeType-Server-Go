@@ -183,7 +183,9 @@ func (s *Server) bilibiliStream(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, r, http.StatusUnprocessableEntity, "No playable streams", "no_playable_streams")
 		return
 	}
-	s.warmStreams("bilibili", append(append([]videoStream{}, resp.VideoOnlyStreams...), resp.VideoStreams...), resp.AudioStreams)
+	if !internalLookup(r.Context()) {
+		s.warmStreams("bilibili", append(append([]videoStream{}, resp.VideoOnlyStreams...), resp.VideoStreams...), resp.AudioStreams)
+	}
 	httpx.JSON(w, http.StatusOK, resp)
 }
 

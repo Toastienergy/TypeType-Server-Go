@@ -95,6 +95,7 @@ LEFT JOIN progress p ON p.user_id = v.user_id AND p.video_url = v.url WHERE v.pl
 		}
 		rows.Close()
 		p.VideoCount = len(p.Videos)
+		s.scheduleRepair("playlist:"+user+":"+r.PathValue("id"), user, savedTables[0], r.PathValue("id"))
 		httpx.JSON(w, http.StatusOK, p)
 	}))
 	rt.Handle("PUT", "/playlists/{id}", s.authed(func(w http.ResponseWriter, r *http.Request, user string) {

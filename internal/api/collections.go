@@ -146,6 +146,7 @@ func (s *Server) subscriptionList(w http.ResponseWriter, r *http.Request, user s
 		s.fail(w, r, err)
 		return
 	}
+	s.warmAvatars(user, items)
 	httpx.JSON(w, http.StatusOK, items)
 }
 
@@ -409,6 +410,7 @@ func (s *Server) mediaList(r *http.Request, user, table, urlCol, atCol string) (
 
 func (s *Server) mediaListRoutes(rt *Router) {
 	rt.Handle("GET", "/favorites", s.authed(func(w http.ResponseWriter, r *http.Request, user string) {
+		s.scheduleRepair("favorites:"+user, user, savedTables[2], "")
 		items, err := s.mediaList(r, user, "favorites", "video_url", "favorited_at")
 		if err != nil {
 			s.fail(w, r, err)
@@ -467,6 +469,7 @@ VALUES ($1, $2, $3, '', '', 0, '', '', '', 0, -1) ON CONFLICT (user_id, video_ur
 		s.deleteRow(w, r, "DELETE FROM favorites WHERE user_id = $1 AND video_url = $2", user, urlTail(r, "videoUrl"))
 	}))
 	rt.Handle("GET", "/watch-later", s.authed(func(w http.ResponseWriter, r *http.Request, user string) {
+		s.scheduleRepair("watch-later:"+user, user, savedTables[1], "")
 		items, err := s.mediaList(r, user, "watch_later", "url", "added_at")
 		if err != nil {
 			s.fail(w, r, err)

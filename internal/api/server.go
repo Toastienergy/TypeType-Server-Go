@@ -43,6 +43,7 @@ type Server struct {
 	notices     *noticeHub
 	activity    *activity
 	feeds       *feeds
+	recs        *recPools
 	emoji       *openMoji
 	twitch      *twitch
 	dl          *downloader
@@ -69,6 +70,7 @@ func New(cfg *config.Config, db *pgxpool.Pool, c *cache.Cache, log *slog.Logger)
 			userData: httpx.NewZone(120, w),
 		}}
 	srv.feeds = newFeeds(srv)
+	srv.recs = newRecPools(srv)
 	return srv
 }
 
@@ -101,6 +103,7 @@ func (s *Server) Routes() (http.Handler, *Router) {
 	s.twitchRoutes(rt)
 	s.groupRoutes(rt)
 	s.downloaderRoutes(rt)
+	s.recommendationRoutes(rt)
 	h := httpx.Gzip(rt.Handler())
 	h = httpx.CORS(s.Cfg.AllowedOrigins, s.Cfg.AllowAnyOrigin, h)
 	return httpx.Observe(s.Log, h), rt

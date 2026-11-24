@@ -57,6 +57,7 @@ type Watch struct {
 	RelatedContinuation             string
 	PlayableReason                  string
 	Playable                        bool
+	Restriction                     *Restriction
 }
 
 // FetchWatch asks the WEB player and next endpoints at once; the page needs both and neither waits for the other.
@@ -148,6 +149,7 @@ func parsePlayer(id string, p map[string]any) *Watch {
 	}
 	w.Playable = Str(p, "playabilityStatus", "status") == "OK"
 	w.PlayableReason = Str(p, "playabilityStatus", "reason")
+	w.Restriction = CheckPlayability(Obj(p, "playabilityStatus"))
 	w.Frames = parseFrames(p)
 	w.Subtitles = parseCaptions(p)
 	return w

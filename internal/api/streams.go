@@ -357,6 +357,10 @@ func (s *Server) youtubeStream(w http.ResponseWriter, r *http.Request, live bool
 			resp.HlsURL = s.hlsPath(resp.HlsURL)
 		}
 		if len(resp.VideoOnlyStreams) == 0 && len(resp.AudioStreams) == 0 && len(resp.VideoStreams) == 0 && resp.HlsURL == "" {
+			if watch != nil && watch.Restriction != nil {
+				writeRestriction(w, r, watch.Restriction)
+				return
+			}
 			w.Header().Set("Retry-After", "15")
 			if tokenDown {
 				httpx.Error(w, r, http.StatusServiceUnavailable, "The token service could not get a YouTube token", "token_service_unavailable")

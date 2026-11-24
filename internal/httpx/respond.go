@@ -1,6 +1,7 @@
 package httpx
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -24,8 +25,19 @@ type ErrorBody struct {
 	RequestID *string `json:"requestId"`
 }
 
+// marshal leaves <, > and & as they are, like kotlinx.serialization; only the API reads these bodies.
+func marshal(v any) ([]byte, error) {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(v); err != nil {
+		return nil, err
+	}
+	return bytes.TrimSuffix(buf.Bytes(), []byte("\n")), nil
+}
+
 func JSON(w http.ResponseWriter, status int, v any) {
-	b, err := json.Marshal(v)
+	b, err := marshal(v)
 	if err != nil {
 		Error(w, nil, http.StatusInternalServerError, "Internal server error", "internal_error")
 		return
@@ -47,7 +59,7 @@ func Error(w http.ResponseWriter, r *http.Request, status int, msg, code string)
 			body.RequestID = &id
 		}
 	}
-	b, _ := json.Marshal(body)
+	b, _ := marshal(body)
 	RawJSON(w, status, b)
 }
 

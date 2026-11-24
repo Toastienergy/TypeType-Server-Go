@@ -92,7 +92,13 @@ type flight[T any] struct {
 // callers, its answer kept per the area's admission; a failure starts a backoff (30 s doubling up to 10 min) during
 // which the last good answer, or the remembered failure, is served without asking the provider again.
 func publicCached[T any](s *Server, ctx context.Context, area cacheArea[T], key string, load func(context.Context) (T, *extractFail)) (T, *extractFail) {
+	if v, ok := publicLocal.get(key); ok {
+		if t, ok := v.(T); ok {
+			return t, nil
+		}
+	}
 	if v, ok := readCached[T](s, ctx, key); ok {
+		publicLocal.put(key, v, localCacheTTL)
 		return v, nil
 	}
 	res, _, _ := publicFlights.Do(key, func() (any, error) {
@@ -135,6 +141,7 @@ func loadThrough[T any](s *Server, ctx context.Context, area cacheArea[T], key s
 	switch adm := area.admit(v); adm.kind {
 	case admitValid:
 		writeJSON(s, ctx, key, v, adm.ttl)
+		publicLocal.put(key, v, adm.ttl)
 		if adm.ttl > 0 && area.keepLastGood {
 			writeJSON(s, ctx, key+":good", goodEnvelope[T]{v, time.Now().UnixMilli()}, lastGoodTTL)
 		}

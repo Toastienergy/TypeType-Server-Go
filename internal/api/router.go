@@ -193,3 +193,17 @@ func (rt *Router) Written() (int, int) {
 	}
 	return n, len(seen)
 }
+
+// Missing lists the catalog routes still answered by notWritten.
+func (rt *Router) Missing() []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, c := range catalog {
+		k := c[0] + " " + c[1]
+		if !seen[k] && !rt.written[k] {
+			out = append(out, k)
+		}
+		seen[k] = true
+	}
+	return out
+}

@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"time"
+	"typetype.dev/server/internal/bilibili"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -46,6 +47,7 @@ type Server struct {
 	recs        *recPools
 	subs        *subtitles
 	deArrow     *dearrow
+	bili        *bilibili.Client
 	emoji       *openMoji
 	twitch      *twitch
 	dl          *downloader
@@ -75,6 +77,7 @@ func New(cfg *config.Config, db *pgxpool.Pool, c *cache.Cache, log *slog.Logger)
 	srv.recs = newRecPools(srv)
 	srv.subs = newSubtitles(srv)
 	srv.deArrow = newDeArrow(srv)
+	srv.bili = bilibili.NewClient(nil)
 	return srv
 }
 
@@ -114,6 +117,8 @@ func (s *Server) Routes() (http.Handler, *Router) {
 	s.dearrowRoutes(rt)
 	s.hlsRoutes(rt)
 	s.membershipRoutes(rt)
+	s.mediaRoutes(rt)
+	rt.Handle("GET", "/streams/bilibili", s.bilibiliStream)
 	h := httpx.Gzip(rt.Handler())
 	h = httpx.CORS(s.Cfg.AllowedOrigins, s.Cfg.AllowAnyOrigin, h)
 	return httpx.Observe(s.Log, h), rt

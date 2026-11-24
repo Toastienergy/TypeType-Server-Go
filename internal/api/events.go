@@ -215,3 +215,13 @@ func decodeOr(w http.ResponseWriter, r *http.Request, v any, msg string) bool {
 	}
 	return true
 }
+
+// decodeCoded is decodeOr with an error code of its own.
+func decodeCoded(w http.ResponseWriter, r *http.Request, v any, msg, code string) bool {
+	var raw json.RawMessage
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8<<20)).Decode(&raw); err != nil || json.Unmarshal(raw, v) != nil {
+		httpx.Error(w, r, http.StatusBadRequest, msg, code)
+		return false
+	}
+	return true
+}

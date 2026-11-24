@@ -317,6 +317,13 @@ func (w *warmup) warmDash(ctx context.Context, t *mediaTarget, m warmMedia) {
 	if !m.starts {
 		return
 	}
+	if m.video {
+		var total int64
+		if e := w.cache.get(t.URL); e != nil {
+			total = e.total
+		}
+		w.s.mirrorWatch.remember(append([]string{t.URL}, t.Alternates...), total)
+	}
 	end := segs[0][1]
 	if end < int64(len(header)) || end >= warmSegmentMax {
 		return
@@ -363,6 +370,9 @@ func (w *warmup) dashStart(ctx context.Context, t *mediaTarget, m warmMedia) boo
 	segs := sidxSegments(header, m.indexStart)
 	if segs != nil {
 		w.remember(t.URL, segs)
+	}
+	if m.video {
+		w.s.mirrorWatch.remember(append([]string{t.URL}, t.Alternates...), total)
 	}
 	if segs == nil || segs[0][1] < int64(len(header)) {
 		return true

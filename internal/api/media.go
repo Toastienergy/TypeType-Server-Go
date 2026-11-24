@@ -157,6 +157,11 @@ func (m *mediaReply) close() {
 // openMedia is pipeProviderMediaWithAlternates: the first address that answers, with the Range asked for, moving to
 // the next mirror when one refuses or cannot be reached. Provider playlists come back rewritten to /media handles.
 func (s *Server) openMedia(ctx context.Context, urls []string, bid *string, rng string) (*mediaReply, *commentErr) {
+	if len(urls) > 0 && rng != "" {
+		if u, msg := validateProxyURL(urls[0]); msg == "" && proxyProvider(u.Hostname()) == "bilibili" {
+			return s.readBilibiliRange(ctx, urls[0], urls[1:], rng)
+		}
+	}
 	for i, target := range urls {
 		u, msg := validateProxyURL(target)
 		if msg != "" {

@@ -212,11 +212,13 @@ func parseChannelHeader(ch *Channel, res map[string]any) {
 	}
 }
 
-var playlistTabParams = map[string]string{"playlists": "EglwbGF5bGlzdHPyBgQKAkIA", "courses": "Egdjb3Vyc2Vz8gYFCgOiAQA="}
+var playlistTabParams = map[string]string{"playlists": "EglwbGF5bGlzdHPyBgQKAkIA", "courses": "Egdjb3Vyc2Vz8gYFCgOiAQA=",
+	"podcasts": "Eghwb2RjYXN0c_IGBQoDugEA"}
 
 type ChannelPlaylists struct {
-	Playlists []PlaylistResult `json:"playlists"`
-	NextPage  *string          `json:"nextpage"`
+	Playlists   []PlaylistResult `json:"playlists"`
+	NextPage    *string          `json:"nextpage"`
+	ChannelName string           `json:"-"`
 }
 
 // ChannelPlaylists lists a channel's playlists (or courses) tab, or the page a token points to.
@@ -240,6 +242,7 @@ func (c *Client) ChannelPlaylists(ctx context.Context, raw, tab, page string) (C
 	if err != nil {
 		return out, err
 	}
+	out.ChannelName = Str(res, "metadata", "channelMetadataRenderer", "title")
 	var items []any
 	for _, t := range List(res, "contents", "twoColumnBrowseResultsRenderer", "tabs") {
 		tr := Obj(t, "tabRenderer")

@@ -130,8 +130,11 @@ func playlistFromLockup(l map[string]any) (PlaylistResult, bool) {
 	}
 	for _, row := range List(meta, "metadata", "contentMetadataViewModel", "metadataRows") {
 		for _, part := range List(row, "metadataParts") {
-			if p.UploaderName == "" {
-				p.UploaderName = Str(part, "text", "content")
+			t := Str(part, "text", "content")
+			l := strings.ToLower(t)
+			if p.UploaderName == "" && t != "" && !strings.HasPrefix(l, "view ") && !strings.Contains(l, "updated") &&
+				!strings.Contains(l, "video") && !strings.Contains(l, "episode") && !strings.Contains(l, "playlist") {
+				p.UploaderName = t
 			}
 		}
 	}

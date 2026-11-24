@@ -82,6 +82,10 @@ func (s *Server) bilibiliStream(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 25*time.Second)
 	defer cancel()
+	if bilibili.IsLiveURL(raw) {
+		s.bilibiliLive(ctx, w, r, raw, user, hidden, focus)
+		return
+	}
 	relc := make(chan []map[string]any, 1)
 	go func() {
 		rel, _ := s.bili.Related(ctx, bilibili.BVID(raw))

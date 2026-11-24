@@ -75,6 +75,16 @@ func (s *Server) searchRoutes(rt *Router) {
 				page.Items = kept
 			}
 		}
+		if access := s.accessFor(r.Context(), user); access != nil {
+			page.Items = access.filter(page.Items)
+			kept := page.Channels[:0]
+			for _, c := range page.Channels {
+				if access.allowsChannel(c.URL, c.Name) {
+					kept = append(kept, c)
+				}
+			}
+			page.Channels = kept
+		}
 		httpx.JSON(w, http.StatusOK, page)
 	}))
 	rt.Handle("GET", "/suggestions", s.zones.extraction.Limit(nil, func(w http.ResponseWriter, r *http.Request) {
@@ -101,7 +111,8 @@ func (s *Server) searchRoutes(rt *Router) {
 		httpx.JSON(w, http.StatusOK, out)
 	}))
 	rt.Handle("GET", "/trending", s.zones.extraction.Limit(nil, func(w http.ResponseWriter, r *http.Request) {
-		if _, ok := s.publicAccess(w, r); !ok {
+		user, ok := s.publicAccess(w, r)
+		if !ok {
 			return
 		}
 		svc, ok := serviceParam(w, r)
@@ -125,6 +136,6 @@ func (s *Server) searchRoutes(rt *Router) {
 			httpx.Error(w, r, http.StatusUnprocessableEntity, "Trending failed", "error")
 			return
 		}
-		httpx.JSON(w, http.StatusOK, out)
+		httpx.JSON(w, http.StatusOK, s.accessFor(r.Context(), user).filter(out))
 	}))
 }

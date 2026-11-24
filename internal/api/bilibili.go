@@ -116,6 +116,11 @@ func (s *Server) bilibiliStream(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, r, http.StatusForbidden, "Channel is blocked", "content_blocked")
 		return
 	}
+	access := s.accessFor(r.Context(), user)
+	if !access.allowsUploader(resp.UploaderURL, resp.UploaderName) {
+		plain(w, r, http.StatusForbidden, "Channel is not allowed")
+		return
+	}
 	if b := focus.playbackBlock(resp.UploaderURL, resp.PublishedAt); b != nil {
 		b["channelUrl"], b["channelName"], b["channelAvatarUrl"], b["videoTitle"] = resp.UploaderURL, resp.UploaderName, resp.UploaderAvatarURL, resp.Title
 		b["requestId"] = httpx.RequestID(r.Context())
@@ -170,7 +175,7 @@ func (s *Server) bilibiliStream(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, o := range <-relc {
 		it := bilibiliItem(o)
-		if !hidden(it) && (focus == nil || focus.keepsFeedVideo(it)) {
+		if !hidden(it) && (focus == nil || focus.keepsFeedVideo(it)) && access.allowsUploader(it.UploaderURL, it.UploaderName) {
 			resp.RelatedStreams = append(resp.RelatedStreams, it)
 		}
 	}

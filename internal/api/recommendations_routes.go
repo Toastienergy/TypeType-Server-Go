@@ -85,10 +85,10 @@ func (s *Server) writeRecPage(w http.ResponseWriter, r *http.Request, user strin
 		return
 	}
 	now := time.Now().UnixMilli()
-	focus := s.focusFor(r.Context(), user)
+	focus, access := s.focusFor(r.Context(), user), s.accessFor(r.Context(), user)
 	items := []youtube.VideoItem{}
 	for _, v := range page.Items {
-		if hidden(v) || dropFuture && startsLater(v, now) || focus != nil && !focus.keepsFeedVideo(v) {
+		if hidden(v) || dropFuture && startsLater(v, now) || focus != nil && !focus.keepsFeedVideo(v) || !access.allowsUploader(v.UploaderURL, v.UploaderName) {
 			continue
 		}
 		items = append(items, v)

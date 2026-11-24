@@ -312,6 +312,11 @@ func (s *Server) youtubeStream(w http.ResponseWriter, r *http.Request, live bool
 			httpx.Error(w, r, http.StatusForbidden, "Channel is blocked", "content_blocked")
 			return
 		}
+		access := s.accessFor(r.Context(), user)
+		if !access.allowsUploader(resp.UploaderURL, resp.UploaderName) {
+			plain(w, r, http.StatusForbidden, "Channel is not allowed")
+			return
+		}
 		if b := focus.playbackBlock(resp.UploaderURL, resp.PublishedAt); b != nil {
 			b["channelUrl"], b["channelName"], b["channelAvatarUrl"], b["videoTitle"] = resp.UploaderURL, resp.UploaderName, resp.UploaderAvatarURL, resp.Title
 			b["requestId"] = httpx.RequestID(r.Context())
@@ -320,7 +325,7 @@ func (s *Server) youtubeStream(w http.ResponseWriter, r *http.Request, live bool
 		}
 		if watch != nil && watch.Related != nil {
 			resp.RelatedStreams = []youtube.VideoItem{}
-			for _, v := range focus.filter(watch.Related) {
+			for _, v := range access.filter(focus.filter(watch.Related)) {
 				if !hidden(v) {
 					resp.RelatedStreams = append(resp.RelatedStreams, v)
 				}

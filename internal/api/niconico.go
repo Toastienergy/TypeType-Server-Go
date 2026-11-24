@@ -236,3 +236,49 @@ func readHLS(res *http.Response) (string, error) {
 	b, err := io.ReadAll(io.LimitReader(res.Body, 16<<20))
 	return string(b), err
 }
+
+// niconicoTrending is NicoNicoTrendingService's mapping of the ranking items.
+func (s *Server) niconicoTrending(ctx context.Context) ([]youtube.VideoItem, error) {
+	items, err := s.nico.Trending(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]youtube.VideoItem, 0, len(items))
+	for _, o := range items {
+		str := func(m map[string]any, k string) string { v, _ := m[k].(string); return v }
+		owner, _ := o["owner"].(map[string]any)
+		thumb, _ := o["thumbnail"].(map[string]any)
+		count, _ := o["count"].(map[string]any)
+		dur, _ := o["duration"].(float64)
+		views, _ := count["view"].(float64)
+		ownerID := fmtID(owner["id"])
+		uploader := "https://www.nicovideo.jp/user/" + ownerID
+		if str(owner, "ownerType") == "channel" {
+			uploader = "https://ch.nicovideo.jp/" + ownerID
+		}
+		u := "https://www.nicovideo.jp/watch/" + str(o, "id")
+		it := youtube.VideoItem{ID: u, Title: str(o, "title"), URL: u, ThumbnailURL: str(thumb, "largeUrl"), UploaderName: str(owner, "name"),
+			UploaderURL: uploader, UploaderAvatarURL: str(owner, "iconUrl"), Duration: int64(dur), ViewCount: int64(views),
+			UploadDate: str(o, "registeredAt"), Uploaded: -1, StreamType: "video"}
+		if d := str(o, "shortDescription"); strings.TrimSpace(d) != "" {
+			it.ShortDescription = &d
+		}
+		if t, err := time.Parse(time.RFC3339, it.UploadDate); err == nil {
+			it.Uploaded = t.UnixMilli()
+			p := it.Uploaded
+			it.PublishedAt = &p
+		}
+		out = append(out, it)
+	}
+	return out, nil
+}
+
+func fmtID(v any) string {
+	switch x := v.(type) {
+	case string:
+		return x
+	case float64:
+		return strconv.FormatInt(int64(x), 10)
+	}
+	return ""
+}

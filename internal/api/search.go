@@ -109,6 +109,8 @@ func (s *Server) searchRoutes(rt *Router) {
 		switch svc {
 		case 5:
 			out, err = s.bilibiliTrending(r.Context())
+		case 6:
+			out, err = s.niconicoTrending(r.Context())
 		case 0:
 			out, err = s.YT.Trending(r.Context())
 		default:

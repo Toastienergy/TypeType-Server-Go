@@ -77,6 +77,8 @@ func (p *recPools) trending(ctx context.Context, svc int) []youtube.VideoItem {
 		t, err = p.s.YT.Trending(ctx)
 	case 5:
 		t, err = p.s.bilibiliTrending(ctx)
+	case 6:
+		t, err = p.s.niconicoTrending(ctx)
 	}
 	if err != nil {
 		return nil

@@ -252,3 +252,34 @@ func (c *Client) Related(ctx context.Context, id string) ([]map[string]any, erro
 	}
 	return out.Data.Items, nil
 }
+
+// Trending is the 24-hour all-genre ranking, read from the ranking page's server-response data.
+func (c *Client) Trending(ctx context.Context) ([]map[string]any, error) {
+	req, _ := http.NewRequestWithContext(ctx, "GET", "https://www.nicovideo.jp/ranking/genre/all?term=24h", nil)
+	req.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
+	res, err := c.http.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(res.Body, 8<<20))
+	if err != nil {
+		return nil, err
+	}
+	m := serverResp.FindSubmatch(body)
+	if m == nil {
+		return nil, nil
+	}
+	var root map[string]any
+	if err := json.Unmarshal([]byte(html.UnescapeString(string(m[1]))), &root); err != nil {
+		return nil, err
+	}
+	items, _ := dig(root, "data", "response", "$getTeibanRanking", "data", "items").([]any)
+	out := make([]map[string]any, 0, len(items))
+	for _, x := range items {
+		if o, ok := x.(map[string]any); ok {
+			out = append(out, o)
+		}
+	}
+	return out, nil
+}

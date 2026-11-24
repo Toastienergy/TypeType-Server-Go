@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"typetype.dev/server/internal/httpx"
 	"typetype.dev/server/internal/youtube"
@@ -52,11 +53,11 @@ func (s *Server) searchRoutes(rt *Router) {
 		var err error
 		switch svc {
 		case 0:
-			if sel.content.field == ytMusic {
-				notWritten(w, r)
-				return
+			if sel.content.field == ytMusic || strings.HasPrefix(next, "ytm1.") {
+				page, err = s.YT.MusicSearch(r.Context(), q, sel.content.name, sel.content.music, next)
+			} else {
+				page, err = s.YT.Search(r.Context(), q, youtubeSP(sel.content, sel.sorts), next)
 			}
-			page, err = s.YT.Search(r.Context(), q, youtubeSP(sel.content, sel.sorts), next)
 		case 5:
 			if page, ok = s.bilibiliSearch(r.Context(), w, r, q, sel, next); !ok {
 				return

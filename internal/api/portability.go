@@ -42,7 +42,7 @@ func (s *Server) engine() (*portability.Engine, error) {
 			v.Normalize()
 			return json.Marshal(v)
 		})
-		portabilityEngine = &portability.Engine{Registry: reg, Store: st, Port: portabilityPort{s}, Log: s.Log}
+		portabilityEngine = &portability.Engine{Registry: reg, Store: st, Port: portabilityPort{s}, Log: s.Log, Takeout: portability.TakeoutImport}
 	})
 	return portabilityEngine, portabilityErr
 }

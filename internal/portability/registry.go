@@ -12,6 +12,7 @@ func NewRegistry(settings func([]byte) ([]byte, error)) *Registry {
 		viewTubeAdapter{},
 		flowAdapter{},
 		grayjayAdapter{},
+		takeoutAdapter{},
 		opmlAdapter{OPML},
 		materialiousAdapter{},
 		opmlAdapter{SkyTube},

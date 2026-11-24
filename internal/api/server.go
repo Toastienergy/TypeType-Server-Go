@@ -1,15 +1,19 @@
 package api
 
 import (
+	"errors"
 	"log/slog"
 	"net/http"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"typetype.dev/server/internal/auth"
 	"typetype.dev/server/internal/cache"
 	"typetype.dev/server/internal/config"
 	"typetype.dev/server/internal/httpx"
+	"typetype.dev/server/internal/store"
 )
 
 // Build data, set with -ldflags at release time.
@@ -24,11 +28,14 @@ const instanceCacheControl = "no-store, no-cache, must-revalidate, max-age=0"
 
 // Server holds what the handlers share. Each route family lives in its own file and registers itself in routes.
 type Server struct {
-	Cfg   *config.Config
-	DB    *pgxpool.Pool
-	Cache *cache.Cache
-	Log   *slog.Logger
-	zones zones
+	Cfg      *config.Config
+	DB       *pgxpool.Pool
+	Cache    *cache.Cache
+	Log      *slog.Logger
+	Admin    *store.Admin
+	Auth     *auth.Service
+	features features
+	zones    zones
 }
 
 type zones struct {
@@ -37,16 +44,18 @@ type zones struct {
 
 func New(cfg *config.Config, db *pgxpool.Pool, c *cache.Cache, log *slog.Logger) *Server {
 	w := time.Minute
-	return &Server{Cfg: cfg, DB: db, Cache: c, Log: log, zones: zones{
-		extraction: httpx.NewZone(60, w), dearrow: httpx.NewZone(600, w), streams: httpx.NewZone(360, w),
-		channel: httpx.NewZone(180, w), proxy: httpx.NewZone(6000, w), storyboard: httpx.NewZone(1200, w),
-		userData: httpx.NewZone(120, w),
-	}}
+	return &Server{Cfg: cfg, DB: db, Cache: c, Log: log, Admin: store.NewAdmin(db),
+		Auth: auth.NewService(db, cfg.JWTSecret, auth.SessionConfigFromEnv()), features: loadFeatures(cfg), zones: zones{
+			extraction: httpx.NewZone(60, w), dearrow: httpx.NewZone(600, w), streams: httpx.NewZone(360, w),
+			channel: httpx.NewZone(180, w), proxy: httpx.NewZone(6000, w), storyboard: httpx.NewZone(1200, w),
+			userData: httpx.NewZone(120, w),
+		}}
 }
 
 func (s *Server) Routes() (http.Handler, *Router) {
 	rt := NewRouter()
 	s.metaRoutes(rt)
+	s.authRoutes(rt)
 	h := httpx.Gzip(rt.Handler())
 	h = httpx.CORS(s.Cfg.AllowedOrigins, s.Cfg.AllowAnyOrigin, h)
 	return httpx.Observe(s.Log, h), rt
@@ -61,4 +70,7 @@ func (s *Server) metaRoutes(rt *Router) {
 		httpx.JSON(w, http.StatusOK, map[string]string{"service": "server", "version": Version, "revision": Revision,
 			"shortRevision": ShortRevision, "buildTime": BuildTime})
 	})
+	rt.Handle("GET", "/instance", s.instance)
 }
+
+func isNoRows(err error) bool { return errors.Is(err, pgx.ErrNoRows) }

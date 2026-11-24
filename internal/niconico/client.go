@@ -11,6 +11,7 @@ import (
 	"html"
 	"io"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -275,6 +276,39 @@ func (c *Client) Trending(ctx context.Context) ([]map[string]any, error) {
 		return nil, err
 	}
 	items, _ := dig(root, "data", "response", "$getTeibanRanking", "data", "items").([]any)
+	out := make([]map[string]any, 0, len(items))
+	for _, x := range items {
+		if o, ok := x.(map[string]any); ok {
+			out = append(out, o)
+		}
+	}
+	return out, nil
+}
+
+// Search reads one page of video results from the search page's server-response data (sort=h, newest-popular).
+func (c *Client) Search(ctx context.Context, keyword string, page int) ([]map[string]any, error) {
+	u := "https://www.nicovideo.jp/search/" + url.PathEscape(keyword) + "?sort=h&order=d&page=" + strconv.Itoa(page)
+	req, _ := http.NewRequestWithContext(ctx, "GET", u, nil)
+	req.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
+	req.Header.Set("Accept-Language", "ja-JP")
+	res, err := c.http.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(res.Body, 8<<20))
+	if err != nil {
+		return nil, err
+	}
+	m := serverResp.FindSubmatch(body)
+	if m == nil {
+		return nil, errors.New("niconico search: no server-response")
+	}
+	var root map[string]any
+	if err := json.Unmarshal([]byte(html.UnescapeString(string(m[1]))), &root); err != nil {
+		return nil, err
+	}
+	items, _ := dig(root, "data", "response", "$getSearchVideoV2", "data", "items").([]any)
 	out := make([]map[string]any, 0, len(items))
 	for _, x := range items {
 		if o, ok := x.(map[string]any); ok {

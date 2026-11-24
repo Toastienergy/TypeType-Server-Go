@@ -47,6 +47,10 @@ func (s *Server) searchRoutes(rt *Router) {
 			if page, ok = s.bilibiliSearch(r.Context(), w, r, q, r.URL.Query().Get("contentFilter"), r.URL.Query().Get("nextpage")); !ok {
 				return
 			}
+		case 6:
+			if page, ok = s.niconicoSearch(r.Context(), w, r, q, r.URL.Query().Get("contentFilter"), r.URL.Query().Get("nextpage")); !ok {
+				return
+			}
 		default:
 			notWritten(w, r)
 			return

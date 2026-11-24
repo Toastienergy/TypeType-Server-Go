@@ -210,6 +210,9 @@ func (s *Server) sabrCreate(w http.ResponseWriter, r *http.Request) {
 		owner = videoID
 	}
 	ss := s.Sabr.Create(info, videoID, owner, video, audio, start, deref(p.AudioOnly), 0)
+	if s.acceptance != nil {
+		s.acceptance.played(videoID)
+	}
 	s.awaitInit(r.Context(), ss)
 	if isPrewarm {
 		s.Sabr.Remember(key, ss, start)

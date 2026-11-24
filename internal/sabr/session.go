@@ -110,6 +110,7 @@ type Session struct {
 	bytes        int64
 	readyOnce    bool
 	requests     atomic.Int64
+	protection   atomic.Int32
 }
 
 const (
@@ -156,11 +157,15 @@ func (s *Session) Fail(kind, msg string) { s.fail(kind, msg) }
 
 func (s *Session) fail(kind, msg string) {
 	s.mu.Lock()
-	if s.failKind == "" {
+	first := s.failKind == ""
+	if first {
 		s.failKind, s.failMsg = kind, msg
 	}
 	s.notify()
 	s.mu.Unlock()
+	if first && (kind == FailUpstreamRefused || kind == FailSessionChanged) {
+		s.store.hold("sabr_"+kind, s.VideoID, s.UserID)
+	}
 }
 
 // SetPosition records where the client plays, for the generation it plays. A jump to a point the cache does not

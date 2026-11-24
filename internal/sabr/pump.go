@@ -227,7 +227,8 @@ func (s *Session) round(ctx context.Context, in *Info, body []byte, nonce string
 	defer resp.Body.Close()
 	switch {
 	case resp.StatusCode == http.StatusForbidden:
-		out.fatal, out.failKind = "googlevideo HTTP 403", FailUpstreamRefused
+		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 160))
+		out.fatal, out.failKind = "googlevideo HTTP 403 from "+req.URL.Hostname()+": "+strings.TrimSpace(string(snippet)), FailUpstreamRefused
 		return out
 	case resp.StatusCode != http.StatusOK:
 		out.fatal, out.failKind = fmt.Sprintf("googlevideo HTTP %d", resp.StatusCode), FailUnknown
@@ -453,7 +454,9 @@ func (s *Session) readUMP(r *bufio.Reader, in *Info, cookie *[]byte, out *roundR
 		case 46:
 			out.reload = string(bytesField(bytesField(data, 1), 1))
 		case 58:
-			if varintField(data, 1) == 3 {
+			status := varintField(data, 1)
+			s.noteProtection(int32(status))
+			if status == 3 {
 				out.fatal, out.failKind = "attestation required", FailUpstreamRefused
 			}
 		}

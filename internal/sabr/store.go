@@ -23,6 +23,7 @@ type Store struct {
 	mu       sync.Mutex
 	sessions map[string]*Session
 	prewarm  map[string]prewarmed
+	onHold   func(reason, videoID string)
 }
 
 type prewarmed struct {

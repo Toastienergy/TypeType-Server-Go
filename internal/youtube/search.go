@@ -157,11 +157,6 @@ func channelFromRenderer(c map[string]any) ChannelResult {
 		st := Str(b, "metadataBadgeRenderer", "style")
 		if strings.Contains(st, "VERIFIED") {
 			r.IsVerified = true
-			v := "verified"
-			if strings.Contains(st, "ARTIST") {
-				v = "artist"
-			}
-			r.Verification = &v
 		}
 	}
 	return r

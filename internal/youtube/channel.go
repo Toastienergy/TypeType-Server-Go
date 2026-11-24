@@ -192,15 +192,9 @@ func parseChannelHeader(ch *Channel, res map[string]any) {
 		}
 		for _, a := range List(h, "title", "dynamicTextViewModel", "text", "attachmentRuns") {
 			name := Str(a, "element", "type", "imageType", "image", "sources", 0, "clientResource", "imageName")
-			if strings.Contains(name, "CHECK_CIRCLE") || strings.Contains(name, "VERIFIED") {
+			if strings.Contains(name, "CHECK_CIRCLE") || strings.Contains(name, "VERIFIED") || strings.Contains(name, "AUDIO_BADGE") ||
+				strings.Contains(name, "MUSIC") {
 				ch.IsVerified = true
-				v := "verified"
-				ch.Verification = &v
-			}
-			if strings.Contains(name, "AUDIO_BADGE") || strings.Contains(name, "MUSIC") {
-				ch.IsVerified = true
-				v := "artist"
-				ch.Verification = &v
 			}
 		}
 	}

@@ -172,8 +172,8 @@ func (s *Server) youtubeBootstrap(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	in, err := s.Sabr.Token().Info(ctx, id)
 	if _, restricted := requiresSession.Load(id); err != nil && restricted {
-		if acct, ok := s.youtubeAccount(ctx, s.optionalUserID(r)); ok {
-			in, _, err = s.accountSabr(ctx, s.optionalUserID(r), acct, id)
+		if user := s.optionalUserID(r); s.hasYoutubeSession(ctx, user) {
+			in, _, err = s.signedInSabr(ctx, user, id)
 		}
 	}
 	if err != nil {
@@ -346,8 +346,8 @@ func (s *Server) youtubeStream(w http.ResponseWriter, r *http.Request, live bool
 			if rs := resp.restriction; rs != nil && (rs.Code == "age_restricted" || rs.Code == "members_only") {
 				requiresSession.Store(id, true)
 				if s.youtubeCrypto() != nil {
-					if acct, ok := s.youtubeAccount(r.Context(), user); ok {
-						s.writeAccountStream(w, r, user, acct, id, raw, &resp)
+					if s.hasYoutubeSession(r.Context(), user) {
+						s.writeAccountStream(w, r, user, id, raw, &resp)
 						return
 					}
 					httpx.Error(w, r, http.StatusBadRequest, "Connect YouTube to access this video", "youtube_session_required")

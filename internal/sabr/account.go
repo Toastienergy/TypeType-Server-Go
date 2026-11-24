@@ -62,20 +62,21 @@ type Decoded struct {
 	Throttling         map[string]string `json:"throttlingParameters"`
 }
 
-func (t *Token) Decode(ctx context.Context, n []string) (*Decoded, error) {
+func (t *Token) Decode(ctx context.Context, clientName string, n []string) (*Decoded, error) {
 	var out Decoded
-	if err := t.post(ctx, "/youtube/player/decoder", map[string]any{"throttlingParameters": n}, &out); err != nil {
+	body := map[string]any{"throttlingParameters": n}
+	if clientName != "" {
+		body["clientName"] = clientName
+	}
+	if err := t.post(ctx, "/youtube/player/decoder", body, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
 }
 
-// webClientID is the WEB client's id in the SABR request's client info.
-const webClientID = 1
-
 // InfoFromPlayer builds the SABR info of a web /player answer, the n parameter of its streaming URL already
 // deciphered, with the video-bound PO token the media requests carry.
-func InfoFromPlayer(videoID string, p map[string]any, baseURL, streamingPot, visitorData, clientVer, userAgent string) (*Info, error) {
+func InfoFromPlayer(videoID string, p map[string]any, baseURL, streamingPot, visitorData string, clientID int, clientVer, userAgent string) (*Info, error) {
 	sd, _ := p["streamingData"].(map[string]any)
 	if baseURL == "" || sd == nil {
 		return nil, fmt.Errorf("player gave no SABR streaming URL")
@@ -88,7 +89,7 @@ func InfoFromPlayer(videoID string, p map[string]any, baseURL, streamingPot, vis
 	vd := dig(p, "videoDetails")
 	title, _ := vd["title"].(string)
 	in := &Info{VideoID: videoID, BaseURL: baseURL, Ustreamer: b64any(cfg), PoToken: b64any(streamingPot), VisitorData: visitorData,
-		ClientID: webClientID, ClientVer: clientVer, UserAgent: userAgent, Formats: formats, Title: title}
+		ClientID: clientID, ClientVer: clientVer, UserAgent: userAgent, Formats: formats, Title: title}
 	if live, _ := vd["isLive"].(bool); live {
 		in.Live = true
 	}
@@ -120,4 +121,29 @@ func dig(m map[string]any, path ...string) map[string]any {
 		m = next
 	}
 	return m
+}
+
+// TVToken is the token service's TV PO token, as TypetypeTokenYoutubeSessionClient.fetchTvPoToken.
+type TVToken struct {
+	PoToken      string `json:"poToken"`
+	VisitorData  string `json:"visitorData"`
+	LivingRoomID string `json:"livingRoomPoTokenId"`
+}
+
+func (t *Token) TV(ctx context.Context) (*TVToken, error) {
+	if t.base == "" {
+		return nil, ErrNoToken
+	}
+	req, _ := http.NewRequestWithContext(ctx, "GET", t.base+"/tv-token", nil)
+	res, err := t.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	var out TVToken
+	if res.StatusCode != http.StatusOK || json.NewDecoder(io.LimitReader(res.Body, 1<<20)).Decode(&out) != nil ||
+		out.PoToken == "" || out.VisitorData == "" || out.LivingRoomID == "" {
+		return nil, fmt.Errorf("token /tv-token unavailable")
+	}
+	return &out, nil
 }

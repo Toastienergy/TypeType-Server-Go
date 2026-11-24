@@ -70,7 +70,19 @@ var accountPlaybacks = &accountPlayback{visitors: map[string]visitorAt{}, infos:
 // requiresSession remembers videos YouTube only plays to a signed-in viewer, as the public stream answer showed.
 var requiresSession sync.Map
 
-func (s *Server) accountSabr(ctx context.Context, user string, acct *youtube.Account, videoID string) (*sabr.Info, map[string]any, error) {
+// hasYoutubeSession tells whether the viewer has a connected YouTube session of either kind.
+func (s *Server) hasYoutubeSession(ctx context.Context, user string) bool {
+	if user == "" || strings.HasPrefix(user, "guest:") || s.youtubeCrypto() == nil {
+		return false
+	}
+	var n int
+	return s.DB.QueryRow(ctx, "SELECT count(*) FROM youtube_sessions WHERE user_id = $1 AND status = 'connected'", user).Scan(&n) == nil && n > 0
+}
+
+// signedInSabr is AuthenticatedSabrInfoService.fetch: a cookie session plays through the signed-in web /player, a
+// device-code session through the TV /player; the answer is kept per viewer and video until ten minutes before
+// its URL expires.
+func (s *Server) signedInSabr(ctx context.Context, user, videoID string) (*sabr.Info, map[string]any, error) {
 	a := accountPlaybacks
 	key := user + "\x00" + videoID
 	a.mu.Lock()
@@ -82,7 +94,16 @@ func (s *Server) accountSabr(ctx context.Context, user string, acct *youtube.Acc
 	v, err, _ := a.flights.Do(key, func() (any, error) {
 		ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 20*time.Second)
 		defer cancel()
-		info, player, err := s.fetchAccountSabr(ctx, user, acct, videoID)
+		var info *sabr.Info
+		var player map[string]any
+		var err error
+		if acct, ok := s.youtubeAccount(ctx, user); ok {
+			info, player, err = s.fetchAccountSabr(ctx, user, acct, videoID)
+		} else if access, ok := s.oauthAccess(ctx, user); ok {
+			info, player, err = s.fetchOAuthSabr(ctx, user, access, videoID)
+		} else {
+			err = errors.New("no connected YouTube session")
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -97,6 +118,26 @@ func (s *Server) accountSabr(ctx context.Context, user string, acct *youtube.Acc
 	}
 	c := v.(accountInfo)
 	return c.info, c.player, nil
+}
+
+// decipherN replaces the n parameter of a streaming URL with its value deciphered by the token service's decoder.
+func (s *Server) decipherN(ctx context.Context, raw, clientName string) (string, error) {
+	u, err := url.Parse(raw)
+	if err != nil || raw == "" {
+		return "", errors.New("no SABR URL for the signed-in player")
+	}
+	n := u.Query().Get("n")
+	if n == "" {
+		return raw, nil
+	}
+	d, err := s.Sabr.Token().Decode(ctx, clientName, []string{n})
+	if err != nil || d.Throttling[n] == "" {
+		return "", errors.New("could not decipher the n parameter")
+	}
+	q := u.Query()
+	q.Set("n", d.Throttling[n])
+	u.RawQuery = q.Encode()
+	return u.String(), nil
 }
 
 func (s *Server) accountVisitor(ctx context.Context, user string, acct *youtube.Account) (string, error) {
@@ -127,7 +168,7 @@ func (s *Server) fetchAccountSabr(ctx context.Context, user string, acct *youtub
 	if err != nil {
 		return nil, nil, err
 	}
-	dec, err := tok.Decode(ctx, nil)
+	dec, err := tok.Decode(ctx, "", nil)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -146,25 +187,15 @@ func (s *Server) fetchAccountSabr(ctx context.Context, user string, acct *youtub
 	if rs := youtube.CheckPlayability(youtube.Obj(player, "playabilityStatus")); rs != nil {
 		return nil, player, errors.New(rs.Code + ": " + rs.Message)
 	}
-	raw := youtube.Str(player, "streamingData", "serverAbrStreamingUrl")
-	u, err := url.Parse(raw)
-	if err != nil || raw == "" {
-		return nil, player, errors.New("no SABR URL for the signed-in player")
-	}
-	if n := u.Query().Get("n"); n != "" {
-		d, err := tok.Decode(ctx, []string{n})
-		if err != nil || d.Throttling[n] == "" {
-			return nil, player, errors.New("could not decipher the n parameter")
-		}
-		q := u.Query()
-		q.Set("n", d.Throttling[n])
-		u.RawQuery = q.Encode()
+	stream, err := s.decipherN(ctx, youtube.Str(player, "streamingData", "serverAbrStreamingUrl"), "")
+	if err != nil {
+		return nil, player, err
 	}
 	streaming := tokens.VideoPoToken
 	if streaming == "" {
 		streaming = tokens.StreamingPot
 	}
-	info, err := sabr.InfoFromPlayer(videoID, player, u.String(), streaming, visitor, youtube.Web.Version, youtube.Web.UA)
+	info, err := sabr.InfoFromPlayer(videoID, player, stream, streaming, visitor, youtube.Web.ID, youtube.Web.Version, youtube.Web.UA)
 	if err != nil {
 		return nil, player, err
 	}
@@ -174,8 +205,8 @@ func (s *Server) fetchAccountSabr(ctx context.Context, user string, acct *youtub
 
 // writeAccountStream is YoutubeSessionSabrStreamService: the page of a video YouTube only plays to a signed-in
 // viewer, from the account's /player, with the related videos the public page already filtered for the viewer.
-func (s *Server) writeAccountStream(w http.ResponseWriter, r *http.Request, user string, acct *youtube.Account, id, raw string, public *streamResponse) {
-	info, player, err := s.accountSabr(r.Context(), user, acct, id)
+func (s *Server) writeAccountStream(w http.ResponseWriter, r *http.Request, user, id, raw string, public *streamResponse) {
+	info, player, err := s.signedInSabr(r.Context(), user, id)
 	switch {
 	case errors.Is(err, errSessionRejected):
 		httpx.Error(w, r, http.StatusBadRequest, "YouTube session needs reconnect", "youtube_session_needs_reconnect")

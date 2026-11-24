@@ -192,8 +192,8 @@ func (s *Server) sabrCreate(w http.ResponseWriter, r *http.Request) {
 	info, err := s.Sabr.Token().Info(ctx, videoID)
 	cancel()
 	if _, restricted := requiresSession.Load(videoID); err != nil && restricted {
-		if acct, ok := s.youtubeAccount(r.Context(), user); ok {
-			info, _, err = s.accountSabr(r.Context(), user, acct, videoID)
+		if s.hasYoutubeSession(r.Context(), user) {
+			info, _, err = s.signedInSabr(r.Context(), user, videoID)
 		}
 	}
 	infoAt := time.Since(began)

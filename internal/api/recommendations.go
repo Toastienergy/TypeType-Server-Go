@@ -262,4 +262,3 @@ func (p *recPools) invalidate(ctx context.Context, user string) {
 		}
 	}
 }
-

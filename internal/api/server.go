@@ -44,6 +44,7 @@ type Server struct {
 	activity    *activity
 	feeds       *feeds
 	recs        *recPools
+	subs        *subtitles
 	emoji       *openMoji
 	twitch      *twitch
 	dl          *downloader
@@ -71,6 +72,7 @@ func New(cfg *config.Config, db *pgxpool.Pool, c *cache.Cache, log *slog.Logger)
 		}}
 	srv.feeds = newFeeds(srv)
 	srv.recs = newRecPools(srv)
+	srv.subs = newSubtitles(srv)
 	return srv
 }
 
@@ -106,6 +108,7 @@ func (s *Server) Routes() (http.Handler, *Router) {
 	s.recommendationRoutes(rt)
 	s.recommenderRoutes(rt)
 	s.shortsFeedRoutes(rt)
+	s.subtitleRoutes(rt)
 	h := httpx.Gzip(rt.Handler())
 	h = httpx.CORS(s.Cfg.AllowedOrigins, s.Cfg.AllowAnyOrigin, h)
 	return httpx.Observe(s.Log, h), rt

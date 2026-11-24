@@ -1,6 +1,7 @@
 package portability
 
 import (
+	"strconv"
 	"regexp"
 	"strings"
 )
@@ -44,3 +45,5 @@ func youtubeID(v string) string {
 var xmlAttr = strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;", `"`, "&quot;")
 
 var opmlChannelID = regexp.MustCompile(`[?&]channel_id=([^&#]+)`)
+
+func itoa(i int) string { return strconv.Itoa(i) }

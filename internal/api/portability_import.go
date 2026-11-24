@@ -394,6 +394,10 @@ func (p portabilityPort) settings(ctx context.Context, user string, src portabil
 	err := src.ForEach(portability.Settings, func(r *portability.Record) error {
 		switch r.Type {
 		case portability.TypeSettings:
+			if !hasSettingsKey(r.Values) {
+				// Kotlin applies such a record, Invidious preferences for one, and resets every setting to its default.
+				return one()
+			}
 			st := store.DefaultSettings()
 			if err := json.Unmarshal(r.Values, &st); err != nil {
 				return portabilityInvalid("Invalid settings")
@@ -413,6 +417,30 @@ func (p portabilityPort) settings(ctx context.Context, user string, src portabil
 		return one()
 	})
 	return count, err
+}
+
+var settingsKeys = func() map[string]bool {
+	var m map[string]json.RawMessage
+	b, _ := json.Marshal(store.DefaultSettings())
+	json.Unmarshal(b, &m)
+	out := map[string]bool{}
+	for k := range m {
+		out[k] = true
+	}
+	return out
+}()
+
+func hasSettingsKey(raw json.RawMessage) bool {
+	var m map[string]json.RawMessage
+	if json.Unmarshal(raw, &m) != nil {
+		return true
+	}
+	for k := range m {
+		if settingsKeys[k] {
+			return true
+		}
+	}
+	return false
 }
 
 func portabilityInvalid(msg string) error {

@@ -36,7 +36,7 @@ func normalizeEmojiCode(raw string) string {
 
 const openMojiCDN = "https://cdn.jsdelivr.net/gh/hfg-gmuend/openmoji@master/color/svg/"
 
-// openMoji serves OpenMoji SVGs from memory, then Dragonfly, then the CDN; a missing code is remembered for an hour
+// openMoji serves OpenMoji SVGs from memory, then Dragonfly, then the CDN; a missing code is remembered for five minutes
 // and a failing CDN for fifteen seconds, so a broken avatar never hammers it.
 type openMoji struct {
 	mu       sync.Mutex
@@ -58,7 +58,7 @@ func (s *Server) openMojiSVG(ctx context.Context, code string) []byte {
 		o.mu.Unlock()
 		return b
 	}
-	if t, ok := o.notFound[code]; ok && time.Since(t) < time.Hour {
+	if t, ok := o.notFound[code]; ok && time.Since(t) < 5*time.Minute {
 		o.mu.Unlock()
 		return nil
 	}

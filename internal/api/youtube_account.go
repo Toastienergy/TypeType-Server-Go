@@ -220,3 +220,19 @@ func (s *Server) writeAccountStream(w http.ResponseWriter, r *http.Request, user
 	out.RelatedStreams, out.SponsorBlockSegments, out.SponsorBlockAvailable = public.RelatedStreams, public.SponsorBlockSegments, public.SponsorBlockAvailable
 	httpx.JSON(w, http.StatusOK, out)
 }
+
+// needsSignedIn reports a public lookup that failed because YouTube wants a signed-in viewer: the video was already
+// seen to need it, or the token service's anonymous player asked for a sign-in.
+func needsSignedIn(id string, err error) bool {
+	if err == nil {
+		return false
+	}
+	if _, ok := requiresSession.Load(id); ok {
+		return true
+	}
+	if strings.Contains(err.Error(), "LOGIN_REQUIRED") {
+		requiresSession.Store(id, true)
+		return true
+	}
+	return false
+}

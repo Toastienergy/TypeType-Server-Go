@@ -191,7 +191,7 @@ func (s *Server) sabrCreate(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), sabrInfoTimeout)
 	info, err := s.Sabr.Token().Info(ctx, videoID)
 	cancel()
-	if _, restricted := requiresSession.Load(videoID); err != nil && restricted {
+	if needsSignedIn(videoID, err) {
 		if s.hasYoutubeSession(r.Context(), user) {
 			info, _, err = s.signedInSabr(r.Context(), user, videoID)
 		}

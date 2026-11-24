@@ -38,6 +38,7 @@ type subtitleEntry struct {
 
 type subtitleSel struct {
 	videoID, language, variant, format, source, translation, name string
+	viewer                                                        string
 }
 
 const maxSubtitleBytes = 5 << 20
@@ -50,6 +51,9 @@ func newSubtitles(s *Server) *subtitles {
 func (sel subtitleSel) key() string {
 	raw := strings.Join([]string{sel.videoID, strings.ToLower(sel.language), sel.variant, sel.format, strings.ToLower(sel.source),
 		strings.ToLower(sel.translation), sel.name}, ":")
+	if _, signedIn := requiresSession.Load(sel.videoID); signedIn {
+		raw += ":" + sel.viewer
+	}
 	sum := sha256.Sum256([]byte(raw))
 	return "youtube-subtitle:v1:" + hex.EncodeToString(sum[:])
 }

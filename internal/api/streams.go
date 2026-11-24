@@ -171,7 +171,7 @@ func (s *Server) youtubeBootstrap(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), sabrInfoTimeout)
 	defer cancel()
 	in, err := s.Sabr.Token().Info(ctx, id)
-	if _, restricted := requiresSession.Load(id); err != nil && restricted {
+	if needsSignedIn(id, err) {
 		if user := s.optionalUserID(r); s.hasYoutubeSession(ctx, user) {
 			in, _, err = s.signedInSabr(ctx, user, id)
 		}

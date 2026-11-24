@@ -28,6 +28,11 @@ func (st *subtitles) resolve(ctx context.Context, sel subtitleSel) (tracks []str
 	if err == nil && w != nil {
 		own, live = w.Subtitles, w.Live || w.LiveContent
 	}
+	if _, signedIn := requiresSession.Load(sel.videoID); signedIn && len(inv) == 0 && len(own) == 0 && st.s.hasYoutubeSession(ctx, sel.viewer) {
+		if _, player, err := st.s.signedInSabr(ctx, sel.viewer, sel.videoID); err == nil {
+			own = youtube.ParsePlayer(sel.videoID, player).Subtitles
+		}
+	}
 	if len(inv) == 0 && own == nil {
 		return nil, false, false
 	}
@@ -120,7 +125,7 @@ func (s *Server) subtitleRoutes(rt *Router) {
 		}
 		sel := subtitleSel{videoID: strings.TrimSpace(r.PathValue("videoId")), language: strings.TrimSpace(q.Get("language")),
 			variant: q.Get("variant"), format: format, source: strings.TrimSpace(q.Get("sourceLanguage")),
-			translation: strings.TrimSpace(q.Get("translation")), name: strings.TrimSpace(q.Get("name"))}
+			translation: strings.TrimSpace(q.Get("translation")), name: strings.TrimSpace(q.Get("name")), viewer: s.optionalUserID(r)}
 		if !videoIDRe.MatchString(sel.videoID) || !validTag(sel.language) || sel.variant != "manual" && sel.variant != "auto" ||
 			sel.format != "vtt" && sel.format != "ttml" || sel.source != "" && !validTag(sel.source) ||
 			sel.translation != "" && !validTag(sel.translation) || len([]rune(sel.name)) > 128 {

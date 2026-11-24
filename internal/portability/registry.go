@@ -9,7 +9,11 @@ func NewRegistry(settings func([]byte) ([]byte, error)) *Registry {
 		invidiousAdapter{},
 		pipedAdapter{},
 		libreTubeAdapter{},
+		viewTubeAdapter{},
+		flowAdapter{},
+		grayjayAdapter{},
 		opmlAdapter{OPML},
+		materialiousAdapter{},
 		opmlAdapter{SkyTube},
 		opmlAdapter{YoutubeLocal},
 	}}

@@ -80,6 +80,7 @@ func (s *Server) Routes() (http.Handler, *Router) {
 	s.historyRoutes(rt)
 	s.profileRoutes(rt)
 	s.sessionRoutes(rt)
+	s.collectionRoutes(rt)
 	h := httpx.Gzip(rt.Handler())
 	h = httpx.CORS(s.Cfg.AllowedOrigins, s.Cfg.AllowAnyOrigin, h)
 	return httpx.Observe(s.Log, h), rt

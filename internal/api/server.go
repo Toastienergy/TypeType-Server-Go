@@ -45,6 +45,7 @@ type Server struct {
 	notices     *noticeHub
 	activity    *activity
 	feeds       *feeds
+	warm        *warmup
 	recs        *recPools
 	subs        *subtitles
 	deArrow     *dearrow
@@ -77,6 +78,7 @@ func New(cfg *config.Config, db *pgxpool.Pool, c *cache.Cache, log *slog.Logger)
 			userData: httpx.NewZone(120, w),
 		}}
 	srv.feeds = newFeeds(srv)
+	srv.warm = newWarmup(srv)
 	srv.startPushPoller()
 	srv.recs = newRecPools(srv)
 	srv.subs = newSubtitles(srv)

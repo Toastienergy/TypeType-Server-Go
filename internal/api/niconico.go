@@ -165,6 +165,7 @@ func (s *Server) niconicoStream(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, r, http.StatusUnprocessableEntity, "No playable streams", "no_playable_streams")
 		return
 	}
+	s.warmStreams("niconico", append(append([]videoStream{}, resp.VideoOnlyStreams...), resp.VideoStreams...), resp.AudioStreams)
 	httpx.JSON(w, http.StatusOK, resp)
 }
 

@@ -136,19 +136,33 @@ func (s *Server) serveMedia(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, r, http.StatusNotFound, "Media handle has expired or is unknown", "media_handle_not_found")
 		return
 	}
-	s.pipeMedia(w, r, append([]string{t.URL}, t.Alternates...), t.DomandBid)
+	s.warm.onServed(handle, &t, r.Header.Get("Range"))
+	s.serveWarm(w, r, &t)
 }
 
-// pipeMedia streams the first address that answers, keeping the client's Range, and moves on to the next mirror
-// when one refuses or cannot be reached.
-func (s *Server) pipeMedia(w http.ResponseWriter, r *http.Request, urls []string, bid *string) {
-	rng := r.Header.Get("Range")
+// mediaReply is an upstream answer ready to relay: a body to stream, or the rewritten text of a provider playlist.
+type mediaReply struct {
+	status                        int
+	ctype, length, crange, accept string
+	body                          io.ReadCloser
+	text                          []byte
+}
+
+func (m *mediaReply) close() {
+	if m != nil && m.body != nil {
+		m.body.Close()
+	}
+}
+
+// openMedia is pipeProviderMediaWithAlternates: the first address that answers, with the Range asked for, moving to
+// the next mirror when one refuses or cannot be reached. Provider playlists come back rewritten to /media handles.
+func (s *Server) openMedia(ctx context.Context, urls []string, bid *string, rng string) (*mediaReply, *commentErr) {
 	for i, target := range urls {
 		u, msg := validateProxyURL(target)
 		if msg != "" {
 			continue
 		}
-		req, _ := http.NewRequestWithContext(r.Context(), "GET", target, nil)
+		req, _ := http.NewRequestWithContext(ctx, "GET", target, nil)
 		switch proxyProvider(u.Hostname()) {
 		case "bilibili":
 			req.Header.Set("User-Agent", bilibiliUA)
@@ -164,8 +178,8 @@ func (s *Server) pipeMedia(w http.ResponseWriter, r *http.Request, urls []string
 		}
 		res, err := s.proxyClient.Do(req)
 		if err != nil {
-			if r.Context().Err() != nil {
-				return
+			if ctx.Err() != nil {
+				return nil, &commentErr{499, "", ""}
 			}
 			continue
 		}
@@ -173,38 +187,58 @@ func (s *Server) pipeMedia(w http.ResponseWriter, r *http.Request, urls []string
 			res.Body.Close()
 			continue
 		}
-		defer res.Body.Close()
 		if res.StatusCode/100 != 2 && res.StatusCode != http.StatusRequestedRangeNotSatisfiable {
-			httpx.Error(w, r, http.StatusUnprocessableEntity, "Upstream returned "+strconv.Itoa(res.StatusCode), "error")
-			return
+			res.Body.Close()
+			return nil, &commentErr{http.StatusUnprocessableEntity, "Upstream returned " + strconv.Itoa(res.StatusCode), "error"}
 		}
-		h := w.Header()
 		if isHLSResponse(res.Header.Get("Content-Type"), target) && proxyProvider(u.Hostname()) != "youtube" {
 			body, err := readHLS(res)
+			res.Body.Close()
 			if err != nil {
-				httpx.Error(w, r, http.StatusUnprocessableEntity, "Proxy fetch failed", "error")
-				return
+				return nil, &commentErr{http.StatusUnprocessableEntity, "Proxy fetch failed", "error"}
 			}
-			h.Set("Content-Type", res.Header.Get("Content-Type"))
-			w.WriteHeader(res.StatusCode)
-			io.WriteString(w, s.rewriteProviderHLS(r.Context(), body, target, bid))
-			return
+			text := s.rewriteProviderHLS(ctx, body, target, bid)
+			return &mediaReply{status: res.StatusCode, ctype: res.Header.Get("Content-Type"), text: []byte(text)}, nil
 		}
 		ct := res.Header.Get("Content-Type")
 		if ct == "" {
 			ct = "application/octet-stream"
 		}
-		h.Set("Content-Type", ct)
-		for _, k := range []string{"Content-Length", "Content-Range", "Accept-Ranges"} {
-			if v := res.Header.Get(k); v != "" {
-				h.Set(k, v)
-			}
+		return &mediaReply{status: res.StatusCode, ctype: ct, length: res.Header.Get("Content-Length"), crange: res.Header.Get("Content-Range"),
+			accept: res.Header.Get("Accept-Ranges"), body: res.Body}, nil
+	}
+	return nil, &commentErr{http.StatusUnprocessableEntity, "Proxy fetch failed", "error"}
+}
+
+func writeMediaReply(w http.ResponseWriter, r *http.Request, m *mediaReply) {
+	defer m.close()
+	h := w.Header()
+	h.Set("Content-Type", m.ctype)
+	for k, v := range map[string]string{"Content-Length": m.length, "Content-Range": m.crange, "Accept-Ranges": m.accept} {
+		if v != "" {
+			h.Set(k, v)
 		}
-		w.WriteHeader(res.StatusCode)
+	}
+	w.WriteHeader(m.status)
+	if m.text != nil {
 		if r.Method != http.MethodHead {
-			copyBody(w, res.Body)
+			w.Write(m.text)
 		}
 		return
 	}
-	httpx.Error(w, r, http.StatusUnprocessableEntity, "Proxy fetch failed", "error")
+	if r.Method != http.MethodHead {
+		copyBody(w, m.body)
+	}
+}
+
+// pipeMedia relays openMedia's answer.
+func (s *Server) pipeMedia(w http.ResponseWriter, r *http.Request, urls []string, bid *string) {
+	m, cerr := s.openMedia(r.Context(), urls, bid, r.Header.Get("Range"))
+	if cerr != nil {
+		if cerr.status != 499 {
+			cerr.write(w, r)
+		}
+		return
+	}
+	writeMediaReply(w, r, m)
 }

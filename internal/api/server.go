@@ -30,17 +30,18 @@ const instanceCacheControl = "no-store, no-cache, must-revalidate, max-age=0"
 
 // Server holds what the handlers share. Each route family lives in its own file and registers itself in routes.
 type Server struct {
-	Cfg      *config.Config
-	DB       *pgxpool.Pool
-	Cache    *cache.Cache
-	Log      *slog.Logger
-	Admin    *store.Admin
-	Auth     *auth.Service
-	Sabr     *sabr.Store
-	YT       *youtube.Client
-	sponsor  *sponsorBlock
-	features features
-	zones    zones
+	Cfg         *config.Config
+	DB          *pgxpool.Pool
+	Cache       *cache.Cache
+	Log         *slog.Logger
+	Admin       *store.Admin
+	Auth        *auth.Service
+	Sabr        *sabr.Store
+	YT          *youtube.Client
+	sponsor     *sponsorBlock
+	proxyClient *http.Client
+	features    features
+	zones       zones
 }
 
 type zones struct {
@@ -55,7 +56,7 @@ func New(cfg *config.Config, db *pgxpool.Pool, c *cache.Cache, log *slog.Logger)
 			MaxSessions: max(1, config.IntEnv("SABR_MAX_SESSIONS", 24)),
 			Idle:        time.Duration(max(60, config.IntEnv("SABR_IDLE_EVICTION_SECONDS", 240))) * time.Second,
 			BudgetBytes: int64(max(64, config.IntEnv("SABR_SESSION_BYTE_BUDGET_MB", 512))) << 20}),
-		YT: youtube.NewClient(cfg.YoutubeProxyURL), sponsor: newSponsorBlock(c),
+		YT: youtube.NewClient(cfg.YoutubeProxyURL), sponsor: newSponsorBlock(c), proxyClient: newProxyClient(),
 		zones: zones{
 			extraction: httpx.NewZone(60, w), dearrow: httpx.NewZone(600, w), streams: httpx.NewZone(360, w),
 			channel: httpx.NewZone(180, w), proxy: httpx.NewZone(6000, w), storyboard: httpx.NewZone(1200, w),
@@ -69,6 +70,7 @@ func (s *Server) Routes() (http.Handler, *Router) {
 	s.authRoutes(rt)
 	s.sabrRoutes(rt)
 	s.streamRoutes(rt)
+	s.proxyRoutes(rt)
 	h := httpx.Gzip(rt.Handler())
 	h = httpx.CORS(s.Cfg.AllowedOrigins, s.Cfg.AllowAnyOrigin, h)
 	return httpx.Observe(s.Log, h), rt

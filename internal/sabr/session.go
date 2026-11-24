@@ -161,15 +161,26 @@ func (s *Session) fail(kind, msg string) {
 	s.mu.Unlock()
 }
 
-// SetPosition records where the client plays, for the generation it plays.
+// SetPosition records where the client plays, for the generation it plays. A jump to a point the cache does not
+// cover (a seek the client handles by moving its window) cuts the request in flight at once instead of letting it
+// finish downloading media nobody will watch.
 func (s *Session) SetPosition(gen, playerMs int64, audioOnly bool) {
+	var abort context.CancelFunc
 	s.mu.Lock()
 	if gen == s.gen {
-		s.playerMs = max(0, playerMs)
+		playerMs = max(0, playerMs)
+		jumped := playerMs < s.playerMs-backBufferMs || playerMs > s.playerMs+2*leadMs
+		s.playerMs = playerMs
 		s.AudioOnly = audioOnly
 		s.touch()
+		if jumped && s.tracks[audioTrack].covering(playerMs) == nil {
+			s.demandMs, s.seekPending, abort = 0, true, s.abortRequest
+		}
 	}
 	s.mu.Unlock()
+	if abort != nil {
+		abort()
+	}
 	s.poke()
 }
 

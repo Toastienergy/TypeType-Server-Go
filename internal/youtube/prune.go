@@ -18,6 +18,17 @@ var channelSkip = map[string]bool{
 	"accessibilityContext": true, "frameworkUpdates": true,
 }
 
+// nextSkip is channelSkip for a watch page's next answer (about 780 KB), plus its description panel copy, end
+// screen overlays, merchandise shelf, consent interstitial and language list, which no parser reads either.
+// frameworkUpdates stays: comments read their entities there.
+var nextSkip = map[string]bool{
+	"menuButton": true, "themedPalette": true, "thumbnailHoverOverlayToggleActionsViewModel": true,
+	"signalServiceEndpoint": true, "videoCommand": true, "clickTrackingParams": true, "trackingParams": true,
+	"watchEndpointSupportedOnesieConfig": true, "loggingContext": true, "loggingDirectives": true, "topbar": true,
+	"accessibilityContext": true, "structuredDescriptionContentRenderer": true, "showSheetCommand": true,
+	"playerOverlays": true, "merchandiseShelfRenderer": true, "interstitial": true, "languageList": true,
+}
+
 // decoders keep their read buffer between answers; duplicate member names are allowed, as encoding/json does
 // (the last one wins), which also spares a name set per object.
 var decoders = sync.Pool{New: func() any { return jsontext.NewDecoder(noInput) }}

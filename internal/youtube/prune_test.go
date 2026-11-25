@@ -6,6 +6,7 @@ import (
 	"os"
 	"reflect"
 	"testing"
+	"time"
 )
 
 func channelFixture(tb testing.TB) []byte {
@@ -70,5 +71,59 @@ func BenchmarkChannelPruned(b *testing.B) {
 	for b.Loop() {
 		m, _ := decodePruned(bytes.NewReader(data), channelSkip)
 		c.channelPage("UC", m)
+	}
+}
+
+func nextFixture(tb testing.TB) []byte {
+	path := os.Getenv("TEST_NEXT_FIXTURE")
+	if path == "" {
+		tb.Skip("TEST_NEXT_FIXTURE not set")
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		tb.Fatal(err)
+	}
+	return b
+}
+
+func TestPrunedNextMatchesFull(t *testing.T) {
+	b := nextFixture(t)
+	var full map[string]any
+	if err := json.Unmarshal(b, &full); err != nil {
+		t.Fatal(err)
+	}
+	pruned, err := decodePruned(bytes.NewReader(b), nextSkip)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	a, p := &Watch{}, &Watch{}
+	parseNext(a, full, now)
+	parseNext(p, pruned, now)
+	if len(a.Related) == 0 || !reflect.DeepEqual(a, p) {
+		t.Fatalf("pruned next differs: %d related full, %d pruned", len(a.Related), len(p.Related))
+	}
+	if tok := commentsToken(full); tok == "" || tok != commentsToken(pruned) {
+		t.Fatalf("comments token lost: %q", commentsToken(pruned))
+	}
+	t.Logf("%d related, %d chapters", len(a.Related), len(a.Chapters))
+}
+
+func BenchmarkNextFull(b *testing.B) {
+	data := nextFixture(b)
+	b.ReportAllocs()
+	for b.Loop() {
+		var m map[string]any
+		json.Unmarshal(data, &m)
+		parseNext(&Watch{}, m, time.Now())
+	}
+}
+
+func BenchmarkNextPruned(b *testing.B) {
+	data := nextFixture(b)
+	b.ReportAllocs()
+	for b.Loop() {
+		m, _ := decodePruned(bytes.NewReader(data), nextSkip)
+		parseNext(&Watch{}, m, time.Now())
 	}
 }

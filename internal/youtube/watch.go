@@ -67,13 +67,13 @@ func (c *Client) FetchWatch(ctx context.Context, id string) (*Watch, error) {
 		err error
 	}
 	pc, vc, nc := make(chan res, 1), make(chan res, 1), make(chan res, 1)
-	call := func(ch chan res, ci ClientInfo, endpoint string) {
-		v, err := c.Call(ctx, ci, endpoint, map[string]any{"videoId": id, "contentCheckOk": true, "racyCheckOk": true})
+	call := func(ch chan res, ci ClientInfo, endpoint string, skip map[string]bool) {
+		v, err := c.call(ctx, ci, endpoint, map[string]any{"videoId": id, "contentCheckOk": true, "racyCheckOk": true}, skip)
 		ch <- res{v, err}
 	}
-	go call(pc, Web, "player")
-	go call(vc, AndroidVR, "player")
-	go call(nc, Web, "next")
+	go call(pc, Web, "player", nil)
+	go call(vc, AndroidVR, "player", nil)
+	go call(nc, Web, "next", nextSkip)
 	p, vr, n := <-pc, <-vc, <-nc
 	if p.err != nil && vr.err != nil {
 		return nil, p.err

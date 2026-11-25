@@ -43,7 +43,9 @@ func (c *Client) TVPlayer(ctx context.Context, accessToken, videoID, visitor, li
 	b, _ := json.Marshal(body)
 	req, _ := http.NewRequestWithContext(ctx, "POST", tvPlayerURL, bytes.NewReader(b))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+accessToken)
+	if accessToken != "" {
+		req.Header.Set("Authorization", "Bearer "+accessToken)
+	}
 	req.Header.Set("X-Youtube-Client-Name", "7")
 	req.Header.Set("X-Youtube-Client-Version", TVVersion)
 	req.Header.Set("Origin", youtubeOrigin)

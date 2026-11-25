@@ -68,6 +68,21 @@ func contentPlaybackNonce() string {
 // fetchOAuthSabr is AuthenticatedSabrOauthInfoService.fetch: the TV /player with the TV PO token, its n parameter
 // deciphered by the TV player, as a TVHTML5 SABR session.
 func (s *Server) fetchOAuthSabr(ctx context.Context, user, access, videoID string) (*sabr.Info, map[string]any, error) {
+	info, player, err := s.tvSabr(ctx, access, videoID)
+	if errors.Is(err, errSessionRejected) {
+		s.youtubeNeedsReconnect(context.WithoutCancel(ctx), user)
+	}
+	if err != nil {
+		return nil, player, err
+	}
+	s.DB.Exec(context.WithoutCancel(ctx), "UPDATE youtube_sessions SET last_used_at = $2 WHERE user_id = $1", user, time.Now().UnixMilli())
+	return info, player, nil
+}
+
+// tvSabr asks the TVHTML5 player for a video, with the viewer's OAuth access token when there is one, and turns its
+// answer into SABR session info: the signature timestamp, n and the living-room PO token all come from the token
+// service, as for the TV app.
+func (s *Server) tvSabr(ctx context.Context, access, videoID string) (*sabr.Info, map[string]any, error) {
 	tok := s.Sabr.Token()
 	tv, err := tok.TV(ctx)
 	if err != nil {
@@ -81,8 +96,7 @@ func (s *Server) fetchOAuthSabr(ctx context.Context, user, access, videoID strin
 	if err != nil {
 		return nil, nil, err
 	}
-	if youtube.Str(player, "playabilityStatus", "status") == "LOGIN_REQUIRED" {
-		s.youtubeNeedsReconnect(context.WithoutCancel(ctx), user)
+	if access != "" && youtube.Str(player, "playabilityStatus", "status") == "LOGIN_REQUIRED" {
 		return nil, nil, errSessionRejected
 	}
 	if rs := youtube.CheckPlayability(youtube.Obj(player, "playabilityStatus")); rs != nil {
@@ -100,6 +114,5 @@ func (s *Server) fetchOAuthSabr(ctx context.Context, user, access, videoID strin
 	if err != nil {
 		return nil, player, err
 	}
-	s.DB.Exec(context.WithoutCancel(ctx), "UPDATE youtube_sessions SET last_used_at = $2 WHERE user_id = $1", user, time.Now().UnixMilli())
 	return info, player, nil
 }

@@ -85,7 +85,8 @@ func NewClient(proxy string) *Client {
 			tr.Proxy = http.ProxyURL(u)
 		}
 	}
-	return &Client{http: &http.Client{Transport: tr, Timeout: 20 * time.Second}}
+	tr.DisableCompression = true
+	return &Client{http: &http.Client{Transport: inflating{tr}, Timeout: 20 * time.Second}}
 }
 
 // NewClientWithHTTP is a client that sends every YouTube call through hc, for tests that stand a fake YouTube in.

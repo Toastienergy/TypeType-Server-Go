@@ -275,16 +275,27 @@ func (s *Server) sabrMedia(isInit bool) http.HandlerFunc {
 			wait = 0
 		}
 		var data []byte
-		var ok bool
+		var ok, streamed bool
 		asked := time.Now()
 		defer func() {
 			if took := time.Since(asked); startupStep(ss, took, ok) {
 				s.sabrTrace(r, "sabr_media", ss, "itag", itag, "init", isInit, "seq", seq, "ok", ok, "bytes", len(data),
-					"waitMs", took.Milliseconds(), "generation", gen)
+					"streamed", streamed, "waitMs", took.Milliseconds(), "generation", gen)
 			}
 		}()
 		if isInit {
 			data, ok = ss.Init(r.Context(), itag, max(wait, time.Millisecond))
+		} else if r.Header.Get("Range") == "" {
+			seg, live, found := ss.MediaLive(r.Context(), itag, seq, max(wait, time.Millisecond))
+			if found {
+				defer seg.Release()
+				if live {
+					ok, streamed = true, true
+					s.followMedia(w, r, ss, seg, containerMime(f.MimeType))
+					return
+				}
+				ok, data = true, seg.Data()
+			}
 		} else {
 			var seg *sabr.Segment
 			if seg, ok = ss.Media(r.Context(), itag, seq, max(wait, time.Millisecond)); ok {
@@ -320,6 +331,33 @@ var (
 	mediaTypes      = map[string][]string{"video/mp4": {"video/mp4"}, "audio/mp4": {"audio/mp4"},
 		"video/webm": {"video/webm"}, "audio/webm": {"audio/webm"}}
 )
+
+// followMedia answers a segment still arriving from YouTube with its bytes as they come, flushed part by part, so
+// the player starts decoding before the segment's end. A segment whose response stopped cuts the reply: the player
+// sees its request fail and asks again.
+func (s *Server) followMedia(w http.ResponseWriter, r *http.Request, ss *sabr.Session, seg *sabr.Segment, mime string) {
+	h := w.Header()
+	h["Cache-Control"] = noStoreValue
+	if v, ok := mediaTypes[mime]; ok {
+		h["Content-Type"] = v
+	} else {
+		h.Set("Content-Type", mime)
+	}
+	w.WriteHeader(http.StatusOK)
+	flusher, _ := w.(http.Flusher)
+	err := ss.Follow(r.Context(), seg, func(b []byte) error {
+		if _, err := w.Write(b); err != nil {
+			return err
+		}
+		if flusher != nil {
+			flusher.Flush()
+		}
+		return nil
+	})
+	if err != nil && r.Context().Err() == nil {
+		panic(http.ErrAbortHandler)
+	}
+}
 
 func writeMedia(w http.ResponseWriter, r *http.Request, mime string, data []byte) {
 	h := w.Header()

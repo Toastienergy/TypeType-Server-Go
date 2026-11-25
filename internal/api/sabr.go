@@ -285,8 +285,12 @@ func (s *Server) sabrSeek(w http.ResponseWriter, r *http.Request) {
 	keeps := (p.VideoItag == nil || *p.VideoItag == ss.Video.Itag) && (p.AudioItag == nil || *p.AudioItag == ss.Audio.Itag) &&
 		(deref(p.AudioTrackID) == "" || ss.Audio.AudioTrackID() != nil && *ss.Audio.AudioTrackID() == *p.AudioTrackID)
 	if keeps {
+		began := time.Now()
 		ss.SeekTo(target, deref(p.AudioOnly))
-		s.respondPrepared(w, r, ss, target, s.awaitReady(r.Context(), ss, target, deref(p.AudioOnly)))
+		ready := s.awaitReady(r.Context(), ss, target, deref(p.AudioOnly))
+		s.Log.Info("sabr_seek", "videoId", ss.VideoID, "targetMs", target, "ready", ready, "generation", ss.Generation(),
+			"waitMs", time.Since(began).Milliseconds())
+		s.respondPrepared(w, r, ss, target, ready)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), sabrInfoTimeout)

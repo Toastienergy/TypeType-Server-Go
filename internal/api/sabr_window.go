@@ -114,6 +114,10 @@ func (s *Server) sabrWindow(action string) http.HandlerFunc {
 		win := s.awaitWindow(r, ss, &req)
 		st := ss.Stats()
 		ready := win.Ready && st.FailKind == ""
+		if !ready {
+			s.Log.Info("sabr_window_pending", "videoId", ss.VideoID, "action", action, "playerMs", req.PlayerTimeMs,
+				"generation", req.Generation, "fail", st.FailKind)
+		}
 		if action == "prefetch" {
 			resp := s.pending(ss, &req, win, st, ready)
 			base := sabr.MediaBase(ss.ID)

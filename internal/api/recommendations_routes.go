@@ -8,6 +8,7 @@ import (
 
 	"typetype.dev/server/internal/httpx"
 	"typetype.dev/server/internal/recommend"
+	"typetype.dev/server/internal/recommender"
 	"typetype.dev/server/internal/youtube"
 )
 
@@ -17,7 +18,9 @@ type recRequest struct {
 	intent     recommend.Intent
 }
 
-func parseRecRequest(w http.ResponseWriter, r *http.Request) (recRequest, bool) {
+// parseRecRequest reads the built-in mix's parameters; on the home page a recommender cursor ("rec.") left over from a
+// page the recommender no longer serves starts the built-in mix from its first page.
+func parseRecRequest(w http.ResponseWriter, r *http.Request, home bool) (recRequest, bool) {
 	q := r.URL.Query()
 	req := recRequest{limit: 20, intent: recommend.ParseIntent(q.Get("intent"))}
 	if q.Has("service") {
@@ -31,7 +34,11 @@ func parseRecRequest(w http.ResponseWriter, r *http.Request) (recRequest, bool) 
 	if n, err := strconv.Atoi(q.Get("limit")); err == nil {
 		req.limit = max(1, min(n, 60))
 	}
-	c, ok := recommend.DecodeCursor(q.Get("cursor"))
+	raw := q.Get("cursor")
+	if home && recommender.IsCursor(raw) {
+		raw = ""
+	}
+	c, ok := recommend.DecodeCursor(raw)
 	if !ok {
 		plain(w, r, http.StatusBadRequest, "Invalid 'cursor' parameter")
 		return req, false
@@ -42,9 +49,15 @@ func parseRecRequest(w http.ResponseWriter, r *http.Request) (recRequest, bool) 
 
 func (s *Server) recommendationRoutes(rt *Router) {
 	rt.Handle("GET", "/recommendations/home", s.authed(func(w http.ResponseWriter, r *http.Request, user string) {
-		req, ok := parseRecRequest(w, r)
+		req, ok := parseRecRequest(w, r, true)
 		if !ok {
 			return
+		}
+		if req.svc == 0 {
+			if page := s.rec.home.Get(r.Context(), user, req.limit, r.URL.Query().Get("cursor"), recLocale(r), recTimezone(r)); page != nil {
+				s.writeRecommenderPage(w, r, user, page)
+				return
+			}
 		}
 		pool, err := s.recs.resolve(r, user, req.svc, req.intent, false)
 		if err != nil {
@@ -57,10 +70,14 @@ func (s *Server) recommendationRoutes(rt *Router) {
 		}
 		rotated := recommend.Rotate(*pool, c.Seed)
 		page := recommend.Mix(&rotated, c, req.limit, req.intent, time.Now())
-		s.writeRecPage(w, r, user, page, true, nil)
+		var preparing any
+		if s.rec.home.Preparing(user) {
+			preparing = true
+		}
+		s.writeRecPage(w, r, user, page, true, nil, preparing)
 	}))
 	rt.Handle("GET", "/recommendations/shorts", s.authed(func(w http.ResponseWriter, r *http.Request, user string) {
-		req, ok := parseRecRequest(w, r)
+		req, ok := parseRecRequest(w, r, false)
 		if !ok {
 			return
 		}
@@ -74,20 +91,63 @@ func (s *Server) recommendationRoutes(rt *Router) {
 		if r.URL.Query().Get("debug") == "true" {
 			debug = page.Debug()
 		}
-		s.writeRecPage(w, r, user, page, false, debug)
+		s.writeRecPage(w, r, user, page, false, debug, nil)
 	}))
 }
 
-func (s *Server) writeRecPage(w http.ResponseWriter, r *http.Request, user string, page recommend.Page, dropFuture bool, debug any) {
-	hidden, err := s.blockedFilter(r, user)
+func (s *Server) writeRecPage(w http.ResponseWriter, r *http.Request, user string, page recommend.Page, dropFuture bool, debug, preparing any) {
+	items, err := s.homeItems(r, user, page.Items, dropFuture)
 	if err != nil {
 		s.fail(w, r, err)
 		return
 	}
+	var next *string
+	if page.NextCursor != "" {
+		next = &page.NextCursor
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"items": items, "nextCursor": next, "hasMore": next != nil, "debug": debug,
+		"algorithm": nil, "rows": nil, "preparing": preparing})
+}
+
+// writeRecommenderPage answers with a page of the external recommender, through the same filters, keeping in each
+// row only the videos left on this page.
+func (s *Server) writeRecommenderPage(w http.ResponseWriter, r *http.Request, user string, page *recommender.HomePage) {
+	items, err := s.homeItems(r, user, page.Items, false)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	shown := map[string]bool{}
+	for _, v := range items {
+		shown[v.URL] = true
+	}
+	rows := []recommender.Row{}
+	for _, row := range page.Rows {
+		var urls []string
+		for _, u := range row.VideoURLs {
+			if shown[u] {
+				urls = append(urls, u)
+			}
+		}
+		if len(urls) > 0 {
+			row.VideoURLs = urls
+			rows = append(rows, row)
+		}
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"items": items, "nextCursor": page.NextCursor, "hasMore": page.HasMore, "debug": nil,
+		"algorithm": page.Algorithm, "rows": rows, "preparing": nil})
+}
+
+// homeItems drops blocked and not allowed videos, and those outside the focus; studied channels come first.
+func (s *Server) homeItems(r *http.Request, user string, videos []youtube.VideoItem, dropFuture bool) ([]youtube.VideoItem, error) {
+	hidden, err := s.blockedFilter(r, user)
+	if err != nil {
+		return nil, err
+	}
 	now := time.Now().UnixMilli()
 	focus, access := s.focusFor(r.Context(), user), s.accessFor(r.Context(), user)
 	items := []youtube.VideoItem{}
-	for _, v := range page.Items {
+	for _, v := range videos {
 		if hidden(v) || dropFuture && startsLater(v, now) || focus != nil && !focus.keepsFeedVideo(v) || !access.allowsUploader(v.UploaderURL, v.UploaderName) {
 			continue
 		}
@@ -98,12 +158,7 @@ func (s *Server) writeRecPage(w http.ResponseWriter, r *http.Request, user strin
 			return focus.isStudy(items[i].UploaderURL) && !focus.isStudy(items[j].UploaderURL)
 		})
 	}
-	var next *string
-	if page.NextCursor != "" {
-		next = &page.NextCursor
-	}
-	httpx.JSON(w, http.StatusOK, map[string]any{"items": items, "nextCursor": next, "hasMore": next != nil, "debug": debug,
-		"algorithm": nil, "rows": nil, "preparing": nil})
+	return items, nil
 }
 
 func startsLater(v youtube.VideoItem, now int64) bool {

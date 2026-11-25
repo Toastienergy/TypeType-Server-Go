@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"encoding/json/jsontext"
+	jsonv2 "encoding/json/v2"
 	"net/http"
 	"sync"
 )
@@ -44,23 +46,35 @@ var (
 	trueValue    = []string{"true"}
 )
 
-var jsonBuffers = sync.Pool{New: func() any { return new(bytes.Buffer) }}
+// answerOptions are encoding/json's own with HTML characters left as they are, joined once: this Go builds the
+// v1 Encoder on json/v2, and SetEscapeHTML joined them again on every answer.
+var answerOptions = jsonv2.JoinOptions(json.DefaultOptionsV1(), jsontext.EscapeForHTML(false))
 
-// JSON encodes into a recycled buffer: ResponseWriter.Write does not keep the slice, and buffers past 1 MiB are
-// dropped so one large answer does not stay pinned in the pool.
+type answerEncoder struct {
+	buf bytes.Buffer
+	enc *jsontext.Encoder
+}
+
+var answerEncoders = sync.Pool{New: func() any {
+	a := new(answerEncoder)
+	a.enc = jsontext.NewEncoder(&a.buf, answerOptions)
+	return a
+}}
+
+// JSON encodes with a recycled encoder and buffer: ResponseWriter.Write does not keep the slice, and buffers past
+// 1 MiB are dropped so one large answer does not stay pinned in the pool.
 func JSON(w http.ResponseWriter, status int, v any) {
-	buf := jsonBuffers.Get().(*bytes.Buffer)
-	buf.Reset()
-	enc := json.NewEncoder(buf)
-	enc.SetEscapeHTML(false)
-	if err := enc.Encode(v); err != nil {
-		jsonBuffers.Put(buf)
+	a := answerEncoders.Get().(*answerEncoder)
+	a.buf.Reset()
+	a.enc.Reset(&a.buf, answerOptions)
+	if err := jsonv2.MarshalEncode(a.enc, v); err != nil {
+		answerEncoders.Put(a)
 		Error(w, nil, http.StatusInternalServerError, "Internal server error", "internal_error")
 		return
 	}
-	RawJSON(w, status, bytes.TrimSuffix(buf.Bytes(), []byte("\n")))
-	if buf.Cap() <= 1<<20 {
-		jsonBuffers.Put(buf)
+	RawJSON(w, status, bytes.TrimSuffix(a.buf.Bytes(), []byte("\n")))
+	if a.buf.Cap() <= 1<<20 {
+		answerEncoders.Put(a)
 	}
 }
 

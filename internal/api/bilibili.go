@@ -86,9 +86,12 @@ func (s *Server) bilibiliStream(w http.ResponseWriter, r *http.Request) {
 		s.bilibiliLive(ctx, w, r, raw, user, hidden, focus)
 		return
 	}
+	began := time.Now()
+	var relatedMs int64
 	relc := make(chan []map[string]any, 1)
 	go func() {
 		rel, _ := s.bili.Related(ctx, bilibili.BVID(raw))
+		relatedMs = time.Since(began).Milliseconds()
 		relc <- rel
 	}()
 	vctx, account := ctx, false
@@ -102,6 +105,7 @@ func (s *Server) bilibiliStream(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	v, err := s.bili.Video(vctx, raw)
+	videoMs := time.Since(began).Milliseconds()
 	if account {
 		if err == nil {
 			s.DB.Exec(context.WithoutCancel(ctx), "UPDATE bilibili_sessions SET last_used_at = $2 WHERE user_id = $1", user, time.Now().UnixMilli())
@@ -203,7 +207,11 @@ func (s *Server) bilibiliStream(w http.ResponseWriter, r *http.Request) {
 	if !internalLookup(r.Context()) && (len(resp.VideoOnlyStreams) > 0 || len(resp.AudioStreams) > 0) {
 		s.warmStreams("bilibili", append(append([]videoStream{}, resp.VideoOnlyStreams...), resp.VideoStreams...), resp.AudioStreams)
 	}
-	for _, o := range <-relc {
+	mediaMs := time.Since(began).Milliseconds()
+	related := <-relc
+	s.Log.Info("bilibili_stream", "bvid", bilibili.BVID(raw), "videoMs", videoMs, "mediaMs", mediaMs, "relatedMs", relatedMs,
+		"totalMs", time.Since(began).Milliseconds())
+	for _, o := range related {
 		it := bilibiliItem(o)
 		if !hidden(it) && (focus == nil || focus.keepsFeedVideo(it)) && access.allowsUploader(it.UploaderURL, it.UploaderName) {
 			resp.RelatedStreams = append(resp.RelatedStreams, it)

@@ -84,12 +84,16 @@ func (s *Server) niconicoStream(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 25*time.Second)
 	defer cancel()
+	began := time.Now()
+	var relatedMs int64
 	relc := make(chan []map[string]any, 1)
 	go func() {
 		rel, _ := s.nico.Related(ctx, id)
+		relatedMs = time.Since(began).Milliseconds()
 		relc <- rel
 	}()
 	v, err := s.nico.Watch(ctx, id)
+	watchMs := time.Since(began).Milliseconds()
 	if err != nil {
 		if errors.Is(err, niconico.ErrUnavailable) {
 			httpx.Error(w, r, http.StatusUnprocessableEntity, err.Error(), "content_unavailable")
@@ -163,7 +167,11 @@ func (s *Server) niconicoStream(w http.ResponseWriter, r *http.Request) {
 	if !internalLookup(r.Context()) && (len(resp.VideoOnlyStreams) > 0 || len(resp.AudioStreams) > 0) {
 		s.warmStreams("niconico", append(append([]videoStream{}, resp.VideoOnlyStreams...), resp.VideoStreams...), resp.AudioStreams)
 	}
-	for _, o := range <-relc {
+	mediaMs := time.Since(began).Milliseconds()
+	related := <-relc
+	s.Log.Info("niconico_stream", "videoId", id, "watchMs", watchMs, "mediaMs", mediaMs, "relatedMs", relatedMs,
+		"totalMs", time.Since(began).Milliseconds())
+	for _, o := range related {
 		if it, ok := niconicoRelatedItem(o); ok && !hidden(it) && (focus == nil || focus.keepsFeedVideo(it)) && access.allowsUploader(it.UploaderURL, it.UploaderName) {
 			resp.RelatedStreams = append(resp.RelatedStreams, it)
 		}

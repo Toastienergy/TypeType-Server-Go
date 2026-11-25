@@ -71,8 +71,8 @@ func (c *Client) FetchWatch(ctx context.Context, id string) (*Watch, error) {
 		v, err := c.call(ctx, ci, endpoint, map[string]any{"videoId": id, "contentCheckOk": true, "racyCheckOk": true}, skip)
 		ch <- res{v, err}
 	}
-	go call(pc, Web, "player", nil)
-	go call(vc, AndroidVR, "player", nil)
+	go call(pc, Web, "player", playerSkip)
+	go call(vc, AndroidVR, "player", playerSkip)
 	go call(nc, Web, "next", nextSkip)
 	p, vr, n := <-pc, <-vc, <-nc
 	if p.err != nil && vr.err != nil {

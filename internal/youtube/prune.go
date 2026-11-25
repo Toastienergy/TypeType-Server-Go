@@ -23,6 +23,14 @@ var channelSkip = map[string]bool{
 // nextSkip is channelSkip for a watch page's next answer (about 780 KB), plus its description panel copy, end
 // screen overlays, merchandise shelf, consent interstitial and language list, which no parser reads either.
 // frameworkUpdates stays: comments read their entities there.
+// playerSkip leaves out the tracking, ads and player configuration of the WEB and ANDROID_VR player answers
+// FetchWatch reads; the SABR session asks its own player for the configuration.
+var playerSkip = map[string]bool{
+	"playbackTracking": true, "playerConfig": true, "trackingParams": true, "clickTrackingParams": true,
+	"adBreakHeartbeatParams": true, "paidContentOverlay": true, "attestation": true, "frameworkUpdates": true,
+	"responseContext": true, "loggingContext": true,
+}
+
 var nextSkip = map[string]bool{
 	"menuButton": true, "themedPalette": true, "thumbnailHoverOverlayToggleActionsViewModel": true,
 	"signalServiceEndpoint": true, "videoCommand": true, "clickTrackingParams": true, "trackingParams": true,

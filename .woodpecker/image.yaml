@@ -1,0 +1,65 @@
+clone:
+  git:
+    image: woodpeckerci/plugin-git:2.10.0@sha256:0f06b03ec33137b556c77538563f66c400339052d0c5199d4c3ad1a2a37e1964
+    settings:
+      depth: 1
+
+when:
+  - event: push
+    branch: [dev, beta, main]
+  - event: manual
+    branch: [dev, beta, main]
+
+depends_on: [ci]
+
+services:
+  docker:
+    image: docker:29.1.3-dind@sha256:64d6ee47ea821c986467199baa162f5ac8cde3f57b719f18e23f3ed7a7444131
+    privileged: true
+    environment:
+      DOCKER_TLS_CERTDIR: ""
+    commands:
+      - dockerd-entrypoint.sh --host=tcp://0.0.0.0:2375 --tls=false
+
+# One buildx run makes both architectures: the Dockerfile compiles on the build platform and cross-compiles for
+# the target, and the final stage only copies the binary, so arm64 needs no emulation.
+steps:
+  - name: publish
+    image: docker:29.1.3-cli@sha256:e0b6ff45302985d99b9685b2a2fec50c3379bd47067493968f51da901dc53ad5
+    environment:
+      DOCKER_HOST: tcp://docker:2375
+      IMAGE: ghcr.io/typetype-video/typetype-server-go
+      GHCR_USER:
+        from_secret: ghcr_username
+      GHCR_TOKEN:
+        from_secret: ghcr_token
+    commands:
+      - |
+        set -eu
+        for attempt in $$(seq 1 60); do
+          if docker info >/dev/null 2>&1; then
+            break
+          fi
+          sleep 1
+        done
+        short="$$(printf '%s' "$${CI_COMMIT_SHA}" | cut -c1-7)"
+        case "$${CI_COMMIT_BRANCH}" in
+          dev) channel=dev ;;
+          beta) channel=beta ;;
+          main) channel=latest ;;
+          *) echo "No image for branch $${CI_COMMIT_BRANCH}" >&2; exit 1 ;;
+        esac
+        version="$${CI_COMMIT_BRANCH}-$${short}"
+        printf '%s' "$${GHCR_TOKEN}" | docker login ghcr.io -u "$${GHCR_USER}" --password-stdin
+        docker buildx create --use --driver docker-container >/dev/null
+        docker buildx build --pull --push \
+          --platform linux/amd64,linux/arm64 \
+          --provenance=false --sbom=false \
+          --build-arg "VERSION=$${version}" \
+          --build-arg "REVISION=$${CI_COMMIT_SHA}" \
+          --build-arg "BUILD_TIME=$$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+          --label "org.opencontainers.image.source=https://github.com/TypeType-Video/TypeType-Server-Go" \
+          --label "org.opencontainers.image.revision=$${CI_COMMIT_SHA}" \
+          --label "org.opencontainers.image.licenses=AGPL-3.0-only" \
+          -t "$${IMAGE}:$${channel}" -t "$${IMAGE}:$${version}" .
+        echo "Published $${IMAGE}:$${channel} and $${version} for linux/amd64 and linux/arm64"

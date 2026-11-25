@@ -8,8 +8,17 @@ import (
 	"typetype.dev/server/internal/youtube"
 )
 
+// settings is the feed's read of the user's settings, kept with the blocked lists: any write clears both.
 func (s *Server) settings(r *http.Request, user string) (store.Settings, error) {
-	return store.GetSettings(r.Context(), s.DB, user)
+	type result struct {
+		st  store.Settings
+		err error
+	}
+	res := memoized("settings\x00"+user, func() (result, bool) {
+		st, err := store.GetSettings(r.Context(), s.DB, user)
+		return result{st, err}, err == nil
+	})
+	return res.st, res.err
 }
 
 // blockedFilter is BlockedContentProfile.allowsVideo inverted: a video blocked by its key, a keyword of its title,

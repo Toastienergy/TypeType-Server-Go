@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"sync"
@@ -45,10 +46,11 @@ type sponsorBlock struct {
 	client *http.Client
 	mu     sync.Mutex
 	until  time.Time
+	log    *slog.Logger
 }
 
-func newSponsorBlock(c *cache.Cache) *sponsorBlock {
-	return &sponsorBlock{cache: c, client: &http.Client{Timeout: sponsorTimeout}}
+func newSponsorBlock(c *cache.Cache, log *slog.Logger) *sponsorBlock {
+	return &sponsorBlock{cache: c, client: &http.Client{Timeout: sponsorTimeout}, log: log}
 }
 
 func (sb *sponsorBlock) segments(ctx context.Context, id string) sponsorResult {
@@ -71,6 +73,9 @@ func (sb *sponsorBlock) segments(ctx context.Context, id string) sponsorResult {
 		defer cancel()
 		segs, err := sb.fetch(bg, id)
 		if err != nil {
+			if sb.log != nil {
+				sb.log.Warn("sponsorblock unavailable", "videoId", id, "err", err)
+			}
 			sb.mu.Lock()
 			sb.until = time.Now().Add(sponsorCooldown)
 			sb.mu.Unlock()
@@ -107,7 +112,7 @@ func (sb *sponsorBlock) fetch(ctx context.Context, id string) ([]sponsorSegment,
 		return segs, nil
 	}
 	if res.StatusCode != http.StatusOK {
-		return nil, errors.New("sponsorblock HTTP " + res.Status)
+		return nil, errors.New("sponsorblock HTTP " + res.Status + " retry-after " + res.Header.Get("Retry-After"))
 	}
 	var videos []struct {
 		VideoID  string `json:"videoID"`

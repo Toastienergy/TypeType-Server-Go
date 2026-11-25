@@ -24,6 +24,7 @@ type Store struct {
 	sessions map[string]*Session
 	prewarm  map[string]prewarmed
 	onHold   func(reason, videoID string)
+	onRound  func(videoID string, t RoundTiming)
 }
 
 type prewarmed struct {
@@ -119,6 +120,17 @@ func (st *Store) HasPrewarmed(key string) bool {
 	defer st.mu.Unlock()
 	_, ok := st.prewarm[key]
 	return ok
+}
+
+// PeekPrewarmed is the prewarmed session waiting under key, left waiting for the create that takes it.
+func (st *Store) PeekPrewarmed(key string) (*Session, int64) {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	p, ok := st.prewarm[key]
+	if !ok {
+		return nil, 0
+	}
+	return st.sessions[p.id], p.start
 }
 
 func (st *Store) TakePrewarmed(key string) (*Session, int64) {

@@ -179,7 +179,16 @@ func (s *Server) sabrCreate(w http.ResponseWriter, r *http.Request) {
 	start := p.start()
 	key := prewarmKey(user, videoID, p, start)
 	isPrewarm := r.URL.Query().Get("prewarm") == "true"
-	if !isPrewarm {
+	if isPrewarm {
+		// A card prepares the session on hover through the bootstrap; the prewarm its click sends then joins that
+		// session instead of opening the video a second time at YouTube.
+		if ss, at := s.Sabr.PeekPrewarmed(key); ss != nil {
+			if kind, _ := ss.Failure(); kind == "" {
+				s.respondPrepared(w, r, ss, at, s.awaitReady(r.Context(), ss, at, deref(p.AudioOnly)))
+				return
+			}
+		}
+	} else {
 		if ss, at := s.Sabr.TakePrewarmed(key); ss != nil {
 			if kind, _ := ss.Failure(); kind == "" {
 				s.respondPrepared(w, r, ss, at, s.awaitReady(r.Context(), ss, at, deref(p.AudioOnly)))

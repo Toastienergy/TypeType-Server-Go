@@ -1,0 +1,82 @@
+clone:
+  git:
+    image: woodpeckerci/plugin-git:2.10.0@sha256:0f06b03ec33137b556c77538563f66c400339052d0c5199d4c3ad1a2a37e1964
+    settings:
+      depth: 1
+
+when:
+  - event: push
+    branch: [dev, beta, main]
+  - event: pull_request
+  - event: manual
+
+services:
+  postgres:
+    image: postgres:17.11@sha256:b8faeff7712663c2773a190181e1246e37e364b887611c04658c28b44e2408fe
+    environment:
+      POSTGRES_DB: typetype
+      POSTGRES_USER: typetype
+      POSTGRES_PASSWORD: typetype-ci-only
+  dragonfly:
+    image: docker.dragonflydb.io/dragonflydb/dragonfly:v2.0.2@sha256:061f00b201b58e12f974e4e96c761a881ee1c05e9d8ee967466a604b7299753b
+
+# The steps share the module and build caches through the workspace volume: deps downloads and compiles once, then
+# the checks run side by side on the compiled packages.
+steps:
+  - name: deps
+    image: golang:1.27.4-alpine3.24@sha256:0a5f7fe796599ff487605987432e7619ae45beeb2fba4c2ce0b907879932aebf
+    environment:
+      GOMODCACHE: /woodpecker/go/mod
+      GOCACHE: /woodpecker/go/build
+      GOFLAGS: -mod=readonly
+    commands:
+      - go mod download
+      - go build ./...
+
+  - name: format-vet
+    image: golang:1.27.4-alpine3.24@sha256:0a5f7fe796599ff487605987432e7619ae45beeb2fba4c2ce0b907879932aebf
+    depends_on: [deps]
+    environment:
+      GOMODCACHE: /woodpecker/go/mod
+      GOCACHE: /woodpecker/go/build
+      GOFLAGS: -mod=readonly
+    commands:
+      - |
+        unformatted="$$(gofmt -l .)"
+        if [ -n "$$unformatted" ]; then
+          echo "$$unformatted"
+          exit 1
+        fi
+      - go vet ./...
+
+  - name: test
+    image: golang:1.27.4-alpine3.24@sha256:0a5f7fe796599ff487605987432e7619ae45beeb2fba4c2ce0b907879932aebf
+    depends_on: [deps]
+    environment:
+      GOMODCACHE: /woodpecker/go/mod
+      GOCACHE: /woodpecker/go/build
+      GOFLAGS: -mod=readonly
+      CGO_ENABLED: "1"
+      TEST_DATABASE_URL: postgres://typetype:typetype-ci-only@postgres:5432/typetype
+      TEST_DRAGONFLY_URL: redis://dragonfly:6379
+    commands:
+      - apk add --no-cache gcc musl-dev >/dev/null
+      - |
+        for attempt in $$(seq 1 60); do
+          if nc -z postgres 5432 && nc -z dragonfly 6379; then
+            break
+          fi
+          sleep 1
+        done
+      - go test -race ./...
+
+  - name: build
+    image: golang:1.27.4-alpine3.24@sha256:0a5f7fe796599ff487605987432e7619ae45beeb2fba4c2ce0b907879932aebf
+    depends_on: [deps]
+    environment:
+      GOMODCACHE: /woodpecker/go/mod
+      GOCACHE: /woodpecker/go/build
+      GOFLAGS: -mod=readonly
+      CGO_ENABLED: "0"
+    commands:
+      - go build -trimpath -o /dev/null ./cmd/typetype-server

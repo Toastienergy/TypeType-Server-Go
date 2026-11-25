@@ -43,6 +43,8 @@ func (s *Server) earlySession(r *http.Request, id string, in *sabr.Info) {
 		if n, err := strconv.ParseInt(strings.TrimSuffix(t, "s"), 10, 64); err == nil && n > 0 {
 			start = n * 1000
 		}
+	} else if user != "" && !strings.HasPrefix(user, "guest:") {
+		start = s.savedResumeMs(r.Context(), user, id, in.DurationMs)
 	}
 	vi, ai := video.Itag, audio.Itag
 	p := playbackRequest{VideoItag: &vi, AudioItag: &ai, StartTimeMs: &start}
@@ -96,4 +98,31 @@ func defaultWebVideo(in *sabr.Info, limit int) *sabr.Format {
 		}
 	}
 	return best
+}
+
+// savedResumeMs is where the web player resumes a video (resolveWatchStartTime): the saved position when it is at
+// least 5 s in and not near the end, else the start. The early session must start there too, or the player's own
+// create finds nothing prepared for it.
+func (s *Server) savedResumeMs(ctx context.Context, user, id string, durationMs int64) int64 {
+	ctx, cancel := context.WithTimeout(ctx, 300*time.Millisecond)
+	defer cancel()
+	var saved int64
+	if s.DB.QueryRow(ctx, "SELECT position FROM progress WHERE user_id = $1 AND video_url = $2", user,
+		"https://www.youtube.com/watch?v="+id).Scan(&saved) != nil {
+		return 0
+	}
+	return resumeFrom(saved, durationMs)
+}
+
+func resumeFrom(savedMs, durationMs int64) int64 {
+	if savedMs < 5000 {
+		return 0
+	}
+	if durationMs > 0 {
+		left := durationMs - savedMs
+		if left <= 15000 || savedMs*100 >= durationMs*95 && left <= 180000 {
+			return 0
+		}
+	}
+	return savedMs
 }

@@ -26,6 +26,7 @@ type subtitles struct {
 	mu       sync.Mutex
 	inflight map[string]chan struct{}
 	memory   map[string]subtitleEntry
+	memBytes int
 	permits  chan struct{}
 	client   *http.Client
 }
@@ -102,17 +103,27 @@ func (st *subtitles) cached(ctx context.Context, sel subtitleSel) (subtitleEntry
 	return e, true
 }
 
+// subtitleMemoryBytes bounds the memory copy by size as well as by count: one track may weigh up to 5 MB.
+const subtitleMemoryBytes = 16 << 20
+
 func (st *subtitles) remember(k string, e subtitleEntry) {
 	st.mu.Lock()
 	defer st.mu.Unlock()
-	if len(st.memory) >= 160 {
+	if old, ok := st.memory[k]; ok {
+		st.memBytes -= len(old.Content)
+		delete(st.memory, k)
+	}
+	full := func() bool { return len(st.memory) >= 160 || st.memBytes+len(e.Content) > subtitleMemoryBytes }
+	if full() {
 		for old, oe := range st.memory {
-			if time.Since(oe.at) > 5*time.Minute || len(st.memory) >= 160 {
+			if time.Since(oe.at) > 5*time.Minute || full() {
+				st.memBytes -= len(oe.Content)
 				delete(st.memory, old)
 			}
 		}
 	}
 	st.memory[k] = e
+	st.memBytes += len(e.Content)
 }
 
 func (st *subtitles) inventory(ctx context.Context, id string) []youtube.Subtitle {

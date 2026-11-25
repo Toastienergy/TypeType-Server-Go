@@ -51,7 +51,9 @@ func TestGzipCompressesSmallWritesOnceTheyAddUp(t *testing.T) {
 }
 
 func TestGzipLeavesSmallBodiesAndMediaAlone(t *testing.T) {
-	w := serveGzip(func(w http.ResponseWriter, r *http.Request) { JSON(w, http.StatusOK, map[string]string{"status": "UP"}) })
+	w := serveGzip(func(w http.ResponseWriter, r *http.Request) {
+		JSON(w, http.StatusOK, map[string]string{"status": "UP"})
+	})
 	if w.Header().Get("Content-Encoding") != "" || w.Body.String() != `{"status":"UP"}` {
 		t.Fatalf("small body %v %q", w.Header(), w.Body.String())
 	}

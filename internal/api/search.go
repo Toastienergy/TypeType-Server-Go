@@ -122,12 +122,8 @@ func (s *Server) searchRoutes(rt *Router) {
 		if !ok {
 			return
 		}
-		if svc != 0 {
-			notWritten(w, r)
-			return
-		}
-		out, err := s.YT.Suggestions(r.Context(), r.URL.Query().Get("query"))
-		if err != nil {
+		out, fail := s.cachedSuggestions(r.Context(), svc, r.URL.Query().Get("query"))
+		if fail != nil {
 			httpx.Error(w, r, http.StatusUnprocessableEntity, "Suggestions failed", "error")
 			return
 		}
@@ -195,5 +191,32 @@ func (s *Server) cachedYoutubeSearch(ctx context.Context, q string, sel searchSe
 			return page, &extractFail{Status: http.StatusUnprocessableEntity, Message: "Search failed", Code: "error"}
 		}
 		return page, nil
+	})
+}
+
+// cachedSuggestions is CachedSuggestionService: half an hour for YouTube, a quarter of an hour for Bilibili and
+// NicoNico, an empty list not kept.
+func (s *Server) cachedSuggestions(ctx context.Context, svc int, q string) ([]string, *extractFail) {
+	ttl := int64(1800)
+	if svc != 0 {
+		ttl = 900
+	}
+	area := cacheArea[[]string]{name: "suggestions", admit: func(l []string) admission { return firstPageAdmission("", len(l) == 0, ttl) }}
+	return publicCached(s, ctx, area, publicCacheKey("suggestions", strconv.Itoa(svc), q), func(ctx context.Context) ([]string, *extractFail) {
+		var out []string
+		var err error
+		switch svc {
+		case 5:
+			out, err = s.bili.Suggestions(ctx, q)
+		case 6:
+			out, err = s.nico.Suggestions(ctx, q)
+		default:
+			out, err = s.YT.Suggestions(ctx, q)
+		}
+		if err != nil {
+			s.Log.Warn("suggestions", "service", svc, "err", err)
+			return nil, &extractFail{Status: http.StatusUnprocessableEntity, Message: "Suggestions failed", Code: "error"}
+		}
+		return out, nil
 	})
 }

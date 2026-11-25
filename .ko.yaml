@@ -1,0 +1,17 @@
+defaultBaseImage: gcr.io/distroless/static-debian12:nonroot@sha256:afa5c872c891853ca7fcf1f12c3edb23f7eeef36189728842dd51042ff57f7ab
+defaultPlatforms:
+  - linux/amd64
+  - linux/arm64
+builds:
+  - id: typetype-server
+    main: ./cmd/typetype-server
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X typetype.dev/server/internal/api.Version={{.Env.VERSION}}
+      - -X typetype.dev/server/internal/api.Revision={{.Env.REVISION}}
+      - -X typetype.dev/server/internal/api.ShortRevision={{.Env.SHORT_REVISION}}
+      - -X typetype.dev/server/internal/api.BuildTime={{.Env.BUILD_TIME}}

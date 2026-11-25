@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"typetype.dev/server/internal/config"
@@ -24,6 +25,7 @@ type feedSnapshot struct {
 	generatedAt int64
 	videos      []youtube.VideoItem
 	sources     map[string][]string
+	notes       atomic.Pointer[notificationMemo]
 }
 
 type channelVideos struct {

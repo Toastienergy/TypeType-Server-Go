@@ -1,11 +1,9 @@
 package api
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"net/http"
 	"net/url"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -76,7 +74,8 @@ func serviceName(id int) string {
 // notifications builds the notification list from the subscription feed: new videos of the channels the user
 // switched notifications on for, one per video, newest first, marked read from the stored read items and the old
 // watermark. ok is false while no feed exists yet.
-func (s *Server) notifications(r *http.Request, user string) ([]notificationItem, bool, error) {
+// notifications returns the user's items, shared and read-only, and whether each one is read.
+func (s *Server) notifications(r *http.Request, user string) ([]notificationItem, []bool, bool, error) {
 	ctx := r.Context()
 	s.feeds.mu.Lock()
 	snap := s.feeds.current[user]
@@ -84,12 +83,12 @@ func (s *Server) notifications(r *http.Request, user string) ([]notificationItem
 	s.feeds.mu.Unlock()
 	if snap == nil {
 		s.feeds.refresh(user)
-		return nil, false, nil
+		return nil, nil, false, nil
 	}
 	enabled := map[string]bool{}
 	rows, err := s.DB.Query(ctx, "SELECT channel_url FROM channel_notification_preferences WHERE user_id = $1 AND enabled", user)
 	if err != nil {
-		return nil, true, err
+		return nil, nil, true, err
 	}
 	for rows.Next() {
 		var u string
@@ -98,53 +97,11 @@ func (s *Server) notifications(r *http.Request, user string) ([]notificationItem
 		}
 	}
 	rows.Close()
-	items := []notificationItem{}
-	if len(enabled) > 0 {
-		seen := map[string]bool{}
-		canon := map[string]string{}
-		for _, v := range snap.videos {
-			sources := snap.sources[feedKey(v)]
-			if len(sources) == 0 {
-				sources = []string{v.UploaderURL}
-			}
-			if !anyIn(sources, enabled, canon) {
-				continue
-			}
-			created := publishedMillis(v)
-			if created <= 0 {
-				continue
-			}
-			sid := videoServiceID(v)
-			channel := strings.TrimSpace(v.UploaderURL)
-			if channel == "" {
-				channel = strings.TrimSpace(v.UploaderAvatarURL)
-			}
-			if channel == "" {
-				channel = strings.TrimSpace(v.UploaderName)
-			}
-			ident := strings.TrimSpace(v.URL)
-			if ident == "" {
-				ident = strings.TrimSpace(v.ID)
-			}
-			if ident == "" {
-				ident = strings.TrimSpace(v.Title) + ":" + strconv.FormatInt(created, 10)
-			}
-			key := strconv.Itoa(sid) + "|" + channel + "|" + ident
-			if seen[key] {
-				continue
-			}
-			seen[key] = true
-			sum := sha256.Sum256([]byte(key))
-			items = append(items, notificationItem{ID: hex.EncodeToString(sum[:]), Type: "subscription_new_video",
-				Title: v.UploaderName + " uploaded a new video", CreatedAt: created, PublishedAt: created, ChannelURL: v.UploaderURL,
-				ChannelName: v.UploaderName, ChannelAvatarURL: v.UploaderAvatarURL, ServiceID: sid, ServiceName: serviceName(sid), Video: v})
-		}
-		sort.SliceStable(items, func(i, j int) bool { return items[i].CreatedAt > items[j].CreatedAt })
-	}
+	items := snap.notificationItems(enabled)
 	read := map[string]bool{}
 	rrows, err := s.DB.Query(ctx, "SELECT notification_id FROM notification_read_items WHERE user_id = $1", user)
 	if err != nil {
-		return nil, true, err
+		return nil, nil, true, err
 	}
 	for rrows.Next() {
 		var id string
@@ -156,14 +113,15 @@ func (s *Server) notifications(r *http.Request, user string) ([]notificationItem
 	var watermark int64
 	s.DB.QueryRow(ctx, "SELECT subscription_last_seen_uploaded FROM notification_states WHERE user_id = $1", user).Scan(&watermark)
 	unread := 0
+	seen := make([]bool, len(items))
 	for i := range items {
-		items[i].Read = read[items[i].ID] || items[i].CreatedAt <= watermark
-		if !items[i].Read {
+		seen[i] = read[items[i].ID] || items[i].CreatedAt <= watermark
+		if !seen[i] {
 			unread++
 		}
 	}
 	unreadCache.Store(user, unread)
-	return items, true, nil
+	return items, seen, true, nil
 }
 
 func cachedUnread(user string) int {
@@ -175,7 +133,7 @@ func cachedUnread(user string) int {
 
 func (s *Server) notificationRoutes(rt *Router) {
 	rt.Handle("GET", "/notifications/unread-count", s.authed(func(w http.ResponseWriter, r *http.Request, user string) {
-		items, ok, err := s.notifications(r, user)
+		_, read, ok, err := s.notifications(r, user)
 		if err != nil {
 			s.fail(w, r, err)
 			return
@@ -183,8 +141,8 @@ func (s *Server) notificationRoutes(rt *Router) {
 		n := cachedUnread(user)
 		if ok {
 			n = 0
-			for _, it := range items {
-				if !it.Read {
+			for _, seen := range read {
+				if !seen {
 					n++
 				}
 			}
@@ -199,7 +157,7 @@ func (s *Server) notificationRoutes(rt *Router) {
 		if n, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil {
 			limit = max(1, min(n, 100))
 		}
-		items, ok, err := s.notifications(r, user)
+		items, read, ok, err := s.notifications(r, user)
 		if err != nil {
 			s.fail(w, r, err)
 			return
@@ -208,7 +166,11 @@ func (s *Server) notificationRoutes(rt *Router) {
 		from := page * limit
 		if ok && from < len(items) {
 			to := min(from+limit, len(items))
-			out["items"] = items[from:to]
+			pageItems := slices.Clone(items[from:to])
+			for i := range pageItems {
+				pageItems[i].Read = read[from+i]
+			}
+			out["items"] = pageItems
 			if to < len(items) {
 				out["nextpage"] = strconv.Itoa(page + 1)
 			}
@@ -216,7 +178,7 @@ func (s *Server) notificationRoutes(rt *Router) {
 		httpx.JSON(w, http.StatusOK, out)
 	}))
 	rt.Handle("POST", "/notifications/read-all", s.authed(func(w http.ResponseWriter, r *http.Request, user string) {
-		items, ok, err := s.notifications(r, user)
+		items, _, ok, err := s.notifications(r, user)
 		if err != nil {
 			s.fail(w, r, err)
 			return
@@ -242,7 +204,7 @@ ON CONFLICT (user_id) DO UPDATE SET subscription_last_seen_uploaded = EXCLUDED.s
 			plain(w, r, http.StatusBadRequest, "Missing notificationId")
 			return
 		}
-		items, ok, err := s.notifications(r, user)
+		items, read, ok, err := s.notifications(r, user)
 		if err != nil {
 			s.fail(w, r, err)
 			return
@@ -253,12 +215,12 @@ ON CONFLICT (user_id) DO UPDATE SET subscription_last_seen_uploaded = EXCLUDED.s
 			return
 		}
 		unread := 0
-		for _, it := range items {
-			if it.ID == id && !it.Read {
+		for i, it := range items {
+			if it.ID == id && !read[i] {
 				s.DB.Exec(r.Context(), "INSERT INTO notification_read_items (user_id, notification_id, read_at) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING", user, id, now)
 				continue
 			}
-			if !it.Read {
+			if !read[i] {
 				unread++
 			}
 		}

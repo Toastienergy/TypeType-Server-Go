@@ -66,5 +66,8 @@ steps:
           --image-label "org.opencontainers.image.revision=$${REVISION}" \
           --image-label "org.opencontainers.image.version=$${VERSION}" \
           --image-label "org.opencontainers.image.licenses=AGPL-3.0-only" \
+          --image-annotation "org.opencontainers.image.source=https://github.com/TypeType-Video/TypeType-Server-Go" \
+          --image-annotation "org.opencontainers.image.description=TypeType Server in Go" \
+          --image-annotation "org.opencontainers.image.licenses=AGPL-3.0-only" \
           ./cmd/typetype-server
         echo "Published $${KO_DOCKER_REPO} $$tags"

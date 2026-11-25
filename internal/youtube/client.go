@@ -83,6 +83,11 @@ func NewClient(proxy string) *Client {
 	return &Client{http: &http.Client{Transport: tr, Timeout: 20 * time.Second}}
 }
 
+// NewClientWithHTTP is a client that sends every YouTube call through hc, for tests that stand a fake YouTube in.
+func NewClientWithHTTP(hc *http.Client) *Client {
+	return &Client{http: hc}
+}
+
 var visitorRe = regexp.MustCompile(`"VISITOR_DATA":"([^"]+)"`)
 
 // Visitor returns a visitor id from the embed page, kept for an hour.

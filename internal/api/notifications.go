@@ -101,12 +101,13 @@ func (s *Server) notifications(r *http.Request, user string) ([]notificationItem
 	items := []notificationItem{}
 	if len(enabled) > 0 {
 		seen := map[string]bool{}
+		canon := map[string]string{}
 		for _, v := range snap.videos {
 			sources := snap.sources[feedKey(v)]
 			if len(sources) == 0 {
 				sources = []string{v.UploaderURL}
 			}
-			if !anyIn(sources, enabled) {
+			if !anyIn(sources, enabled, canon) {
 				continue
 			}
 			created := publishedMillis(v)

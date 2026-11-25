@@ -381,11 +381,12 @@ func (s *Server) subscriptionFeed(w http.ResponseWriter, r *http.Request, user s
 	}
 	focus := s.focusFor(r.Context(), user)
 	var picked []youtube.VideoItem
+	canon := map[string]string{}
 	for _, v := range snap.videos {
 		if st.HideSubscriptionLiveStreams && (v.IsLive || v.IsLiveContent && v.Duration < 0) || st.HideMembersOnlyContent && v.RequiresMembership {
 			continue
 		}
-		if allowed != nil && !anyIn(snap.sources[feedKey(v)], allowed) {
+		if allowed != nil && !anyIn(snap.sources[feedKey(v)], allowed, canon) {
 			continue
 		}
 		if blocked(v) || focus != nil && !focus.keepsFeedVideo(v) {
@@ -413,9 +414,17 @@ func (s *Server) subscriptionFeed(w http.ResponseWriter, r *http.Request, user s
 	httpx.JSON(w, http.StatusOK, map[string]any{"videos": videos, "nextpage": next, "generation": gen, "generatedAt": at, "refreshing": building})
 }
 
-func anyIn(urls []string, allowed map[string]bool) bool {
+// anyIn reports whether one of the source URLs is allowed. canon remembers each source's canonical form for the
+// request: a feed holds hundreds of videos but only as many sources as subscriptions, and parsing each URL again
+// took half of a notifications request.
+func anyIn(urls []string, allowed map[string]bool, canon map[string]string) bool {
 	for _, u := range urls {
-		if allowed[db.CanonicalChannelURL(u)] {
+		c, ok := canon[u]
+		if !ok {
+			c = db.CanonicalChannelURL(u)
+			canon[u] = c
+		}
+		if allowed[c] {
 			return true
 		}
 	}

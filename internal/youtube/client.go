@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"slices"
 	"strconv"
 	"sync"
 	"time"
@@ -38,6 +39,10 @@ type Client struct {
 	mu   sync.Mutex
 	vis  string
 	at   time.Time
+	// fetching lets one caller download the embed page while the others wait for its answer; failedAt keeps
+	// them from queueing one 20 s timeout each when YouTube does not answer.
+	fetching sync.Mutex
+	failedAt time.Time
 	// commentTokens keeps the comments continuation of each video page fetched, so the comments that open right
 	// after the page skip a second /next.
 	commentTokens sync.Map
@@ -92,13 +97,41 @@ var visitorRe = regexp.MustCompile(`"VISITOR_DATA":"([^"]+)"`)
 
 // Visitor returns a visitor id from the embed page, kept for an hour.
 func (c *Client) Visitor(ctx context.Context) string {
-	c.mu.Lock()
-	if c.vis != "" && time.Since(c.at) < time.Hour {
-		v := c.vis
-		c.mu.Unlock()
+	if v := c.cachedVisitor(); v != "" {
 		return v
 	}
+	c.fetching.Lock()
+	defer c.fetching.Unlock()
+	if v := c.cachedVisitor(); v != "" {
+		return v
+	}
+	c.mu.Lock()
+	failed := time.Since(c.failedAt) < 10*time.Second
 	c.mu.Unlock()
+	if failed {
+		return ""
+	}
+	v := c.fetchVisitor(ctx)
+	c.mu.Lock()
+	if v == "" {
+		c.failedAt = time.Now()
+	} else {
+		c.vis, c.at = v, time.Now()
+	}
+	c.mu.Unlock()
+	return v
+}
+
+func (c *Client) cachedVisitor() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.vis != "" && time.Since(c.at) < time.Hour {
+		return c.vis
+	}
+	return ""
+}
+
+func (c *Client) fetchVisitor(ctx context.Context) string {
 	req, _ := http.NewRequestWithContext(ctx, "GET", "https://www.youtube.com/embed/aqz-KE-bpKQ", nil)
 	req.Header.Set("User-Agent", Web.UA)
 	res, err := c.http.Do(req)
@@ -106,15 +139,25 @@ func (c *Client) Visitor(ctx context.Context) string {
 		return ""
 	}
 	defer res.Body.Close()
-	body, _ := io.ReadAll(io.LimitReader(res.Body, 4<<20))
-	m := visitorRe.FindSubmatch(body)
-	if m == nil {
-		return ""
+	return scanVisitor(io.LimitReader(res.Body, 4<<20))
+}
+
+// scanVisitor stops reading at the visitor id, a quarter into the 150 KB embed page.
+func scanVisitor(r io.Reader) string {
+	buf := make([]byte, 0, 64<<10)
+	for {
+		if len(buf) == cap(buf) {
+			buf = slices.Grow(buf, cap(buf))
+		}
+		n, err := r.Read(buf[len(buf):cap(buf)])
+		buf = buf[:len(buf)+n]
+		if m := visitorRe.FindSubmatch(buf); m != nil {
+			return string(m[1])
+		}
+		if err != nil {
+			return ""
+		}
 	}
-	c.mu.Lock()
-	c.vis, c.at = string(m[1]), time.Now()
-	c.mu.Unlock()
-	return string(m[1])
 }
 
 var ErrStatus = errors.New("innertube status")

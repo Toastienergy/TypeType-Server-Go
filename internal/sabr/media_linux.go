@@ -1,4 +1,4 @@
-//go:build linux && !(cgo && cgo_perf)
+//go:build linux
 
 package sabr
 

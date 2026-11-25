@@ -20,8 +20,9 @@ services:
   dragonfly:
     image: docker.dragonflydb.io/dragonflydb/dragonfly:v2.0.2@sha256:061f00b201b58e12f974e4e96c761a881ee1c05e9d8ee967466a604b7299753b
 
-# The steps share the module and build caches through the workspace volume: deps downloads and compiles once, then
-# the checks run side by side on the compiled packages.
+# The steps share the module and build caches through the workspace volume: deps downloads and compiles once and
+# the checks after it reuse the packages; the race tests compile their own build, so they start at once, on Debian
+# for its C compiler, and compile while the database services start.
 steps:
   - name: deps
     image: golang:1.27.4-alpine3.24@sha256:0a5f7fe796599ff487605987432e7619ae45beeb2fba4c2ce0b907879932aebf
@@ -50,8 +51,8 @@ steps:
       - go vet ./...
 
   - name: test
-    image: golang:1.27.4-alpine3.24@sha256:0a5f7fe796599ff487605987432e7619ae45beeb2fba4c2ce0b907879932aebf
-    depends_on: [deps]
+    image: golang:1.27.4-bookworm@sha256:ce59b41415e2524ae99926fe1f37ce48ba8c194dcbd2a56a65436cdcefa2bd34
+    depends_on: []
     environment:
       GOMODCACHE: /woodpecker/go/mod
       GOCACHE: /woodpecker/go/build
@@ -60,14 +61,13 @@ steps:
       TEST_DATABASE_URL: postgres://typetype:typetype-ci-only@postgres:5432/typetype
       TEST_DRAGONFLY_URL: redis://dragonfly:6379
     commands:
-      - apk add --no-cache gcc musl-dev >/dev/null
+      - go test -race -run '^$$' ./...
       - |
-        for attempt in $$(seq 1 60); do
-          if nc -z postgres 5432 && nc -z dragonfly 6379; then
-            break
-          fi
+        bash -c 'for attempt in $$(seq 1 60); do
+          (echo > /dev/tcp/postgres/5432) 2>/dev/null && (echo > /dev/tcp/dragonfly/6379) 2>/dev/null && exit 0
           sleep 1
         done
+        exit 1'
       - go test -race ./...
 
   - name: build
@@ -79,4 +79,4 @@ steps:
       GOFLAGS: -mod=readonly
       CGO_ENABLED: "0"
     commands:
-      - go build -trimpath -o /dev/null ./cmd/typetype-server
+      - go build -o /dev/null ./cmd/typetype-server

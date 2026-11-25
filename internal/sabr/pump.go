@@ -13,6 +13,7 @@ import (
 	"net/http/httptrace"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -213,30 +214,39 @@ func (s *Session) run(ctx context.Context) {
 func (s *Session) round(ctx context.Context, in *Info, body []byte, nonce string, rn int, cookie *[]byte, hedge bool) roundResult {
 	var out roundResult
 	trace := func(c context.Context) context.Context { return c }
-	var timing *RoundTiming
+	fellBack := func() {}
 	if rn < 2 {
+		// A main request that lost to the fallback can still report after the round ended: the timing is guarded,
+		// and what goes out is a copy taken at the end.
+		var mu sync.Mutex
 		t := &RoundTiming{Round: rn}
-		timing = t
 		began := time.Now()
 		since := func() int64 { return time.Since(began).Milliseconds() }
+		set := func(f func()) {
+			mu.Lock()
+			f()
+			mu.Unlock()
+		}
 		trace = func(c context.Context) context.Context {
 			return httptrace.WithClientTrace(c, &httptrace.ClientTrace{
-				GotConn:              func(i httptrace.GotConnInfo) { t.Reused, t.ConnMs = i.Reused, since() },
-				TLSHandshakeDone:     func(tls.ConnectionState, error) { t.TLSMs = since() },
-				GotFirstResponseByte: func() { t.FirstByteMs = since() },
+				GotConn:              func(i httptrace.GotConnInfo) { set(func() { t.Reused, t.ConnMs = i.Reused, since() }) },
+				TLSHandshakeDone:     func(tls.ConnectionState, error) { set(func() { t.TLSMs = since() }) },
+				GotFirstResponseByte: func() { set(func() { t.FirstByteMs = since() }) },
 			})
 		}
+		fellBack = func() { set(func() { t.Fallback, t.FirstByteMs = true, since() }) }
 		defer func() {
-			t.DoneMs, t.Media, t.BackoffMs, t.Reload = since(), out.media, out.backoff.Milliseconds(), out.reload != ""
-			s.firstRoundDone(t)
+			mu.Lock()
+			done := *t
+			mu.Unlock()
+			done.DoneMs, done.Media, done.BackoffMs, done.Reload = since(), out.media, out.backoff.Milliseconds(), out.reload != ""
+			s.firstRoundDone(&done)
 		}()
 	}
 	r := s.send(ctx, in, "alr=yes&cpn="+nonce+"&rn="+strconv.Itoa(rn), body, hedge, trace)
 	defer r.cancel()
 	if r.fallback && r.ok() {
-		if timing != nil {
-			timing.Fallback = true
-		}
+		fellBack()
 		s.mu.Lock()
 		next := *s.info
 		next.BaseURL = r.base

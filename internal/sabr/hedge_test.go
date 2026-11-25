@@ -3,7 +3,9 @@ package sabr
 import (
 	"context"
 	"io"
+	"net"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
@@ -135,5 +137,35 @@ func TestSendWithoutHedgeNeverAsksTheFallback(t *testing.T) {
 	defer r.cancel()
 	if !r.ok() || r.fallback || len(tr.seen()) != 1 {
 		t.Fatalf("want only the main server, got fallback=%v hosts=%v", r.fallback, tr.seen())
+	}
+}
+
+func TestRoundMarksTheFallbackAndMovesTheSession(t *testing.T) {
+	old := hedgeAfter
+	hedgeAfter = 20 * time.Millisecond
+	t.Cleanup(func() { hedgeAfter = old })
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.Host, "rr3---sn-main") {
+			time.Sleep(150 * time.Millisecond)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+	tr := srv.Client().Transport.(*http.Transport).Clone()
+	tr.DialContext = func(ctx context.Context, network, _ string) (net.Conn, error) {
+		return (&net.Dialer{}).DialContext(ctx, network, srv.Listener.Addr().String())
+	}
+	tr.TLSClientConfig.InsecureSkipVerify = true
+	in := &Info{BaseURL: hedgeTestURL}
+	s := &Session{store: &Store{media: &http.Client{Transport: tr}}, info: in, changed: make(chan struct{}), wake: make(chan struct{}, 1)}
+	var cookie []byte
+	s.round(context.Background(), in, nil, "n", 0, &cookie, true)
+	time.Sleep(250 * time.Millisecond)
+	got := s.FirstRound()
+	if got == nil || !got.Fallback {
+		t.Fatalf("first round = %+v, want the fallback marked", got)
+	}
+	if !strings.Contains(s.info.BaseURL, "rr5---sn-spare") {
+		t.Fatalf("session stayed on %s", s.info.BaseURL)
 	}
 }

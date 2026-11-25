@@ -33,7 +33,7 @@ func (s *Server) earlySession(r *http.Request, id string, in *sabr.Info) {
 		}
 		cancel()
 	}
-	video := defaultWebVideo(in, limit)
+	video := defaultWebVideo(in, min(limit, startupHeight))
 	audio := in.SelectAudio(0, "")
 	if video == nil || audio == nil {
 		return
@@ -62,6 +62,10 @@ func (s *Server) earlySession(r *http.Request, id string, in *sabr.Info) {
 	s.sabrTrace(r, "sabr_early", ss, "outcome", "started", "user", userKind(user), "qualityLimit", limit, "videoItag", vi,
 		"audioItag", ai, "startMs", start)
 }
+
+// startupHeight is the quality the web player starts at: its first segment arrives several times sooner than a
+// 1080p one, and the player moves to the viewer's quality once the picture is moving.
+const startupHeight = 480
 
 func webCodecRank(mime string) int {
 	switch {

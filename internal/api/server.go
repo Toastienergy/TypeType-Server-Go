@@ -108,6 +108,7 @@ func (s *Server) Routes() (http.Handler, *Router) {
 	s.metaRoutes(rt)
 	s.authRoutes(rt)
 	s.sabrRoutes(rt)
+	s.startupMetricsRoutes(rt)
 	s.streamRoutes(rt)
 	s.proxyRoutes(rt)
 	s.eventRoutes(rt)

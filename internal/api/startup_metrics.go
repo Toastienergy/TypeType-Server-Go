@@ -16,6 +16,7 @@ type startupReport struct {
 	FirstFrameMs float64              `json:"firstFrameMs"`
 	Steps        map[string][]float64 `json:"steps"`
 	Warmed       bool                 `json:"warmed"`
+	WaitedPlay   bool                 `json:"waitedForPlay"`
 	Trace        string               `json:"trace"`
 }
 
@@ -34,7 +35,7 @@ func (s *Server) startupMetricsRoutes(rt *Router) {
 			plain(w, r, http.StatusBadRequest, "Invalid startup report")
 			return
 		}
-		attrs := []any{"videoId", rep.Video, "origin", originName(rep.Origin), "firstFrameMs", int64(rep.FirstFrameMs), "warmed", rep.Warmed}
+		attrs := []any{"videoId", rep.Video, "origin", originName(rep.Origin), "firstFrameMs", int64(rep.FirstFrameMs), "warmed", rep.Warmed, "waitedForPlay", rep.WaitedPlay}
 		if startupTraceRe.MatchString(rep.Trace) {
 			attrs = append(attrs, "trace", rep.Trace)
 		}

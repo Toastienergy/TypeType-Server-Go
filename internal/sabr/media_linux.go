@@ -1,3 +1,5 @@
+//go:build linux && !(cgo && cgo_perf)
+
 package sabr
 
 import (

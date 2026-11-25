@@ -308,6 +308,7 @@ func (s *Server) youtubeStream(w http.ResponseWriter, r *http.Request, live bool
 			return
 		}
 		resp := *core
+		applyAudioContract(&resp)
 		if hidden(youtube.VideoItem{URL: raw, UploaderURL: resp.UploaderURL, UploaderName: resp.UploaderName}) {
 			httpx.Error(w, r, http.StatusForbidden, "Channel is blocked", "content_blocked")
 			return
@@ -414,5 +415,6 @@ func buildStream(id, raw string, wt *youtube.Watch, in *sabr.Info) streamRespons
 		v := resp.Uploaded
 		resp.PublishedAt = &v
 	}
+	applyAudioContract(&resp)
 	return resp
 }

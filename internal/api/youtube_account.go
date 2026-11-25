@@ -216,8 +216,8 @@ func (s *Server) writeAccountStream(w http.ResponseWriter, r *http.Request, user
 		httpx.Error(w, r, http.StatusBadGateway, "Could not extract this video", "extraction_failed")
 		return
 	}
-	out := buildStream(id, raw, youtube.ParsePlayer(id, player), info)
-	out.RelatedStreams, out.SponsorBlockSegments, out.SponsorBlockAvailable = public.RelatedStreams, public.SponsorBlockSegments, public.SponsorBlockAvailable
+	out := withPublicMetadata(buildStream(id, raw, youtube.ParsePlayer(id, player), info), public)
+	out.RelatedStreams, out.SponsorBlockSegments = public.RelatedStreams, public.SponsorBlockSegments
 	httpx.JSON(w, http.StatusOK, out)
 }
 

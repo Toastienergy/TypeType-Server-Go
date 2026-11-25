@@ -47,7 +47,7 @@ func (s *Server) earlySession(r *http.Request, id string, in *sabr.Info) {
 		start = s.savedResumeMs(r.Context(), user, id, in.DurationMs)
 	}
 	vi, ai := video.Itag, audio.Itag
-	p := playbackRequest{VideoItag: &vi, AudioItag: &ai, StartTimeMs: &start}
+	p := playbackRequest{VideoItag: &vi, AudioItag: &ai, StartTimeMs: &start, AudioTrackID: audio.AudioTrackID()}
 	owner := user
 	if owner == "" {
 		owner = id

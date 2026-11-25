@@ -26,6 +26,8 @@ services:
 steps:
   - name: publish
     image: docker:29.1.3-cli@sha256:e0b6ff45302985d99b9685b2a2fec50c3379bd47067493968f51da901dc53ad5
+    volumes:
+      - typetype-server-go-buildx:/cache
     environment:
       DOCKER_HOST: tcp://docker:2375
       IMAGE: ghcr.io/typetype-video/typetype-server-go
@@ -55,6 +57,8 @@ steps:
         docker buildx build --pull --push \
           --platform linux/amd64,linux/arm64 \
           --provenance=false --sbom=false \
+          --cache-from type=local,src=/cache/current \
+          --cache-to type=local,dest=/cache/next,mode=max \
           --build-arg "VERSION=$${version}" \
           --build-arg "REVISION=$${CI_COMMIT_SHA}" \
           --build-arg "BUILD_TIME=$$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
@@ -62,4 +66,5 @@ steps:
           --label "org.opencontainers.image.revision=$${CI_COMMIT_SHA}" \
           --label "org.opencontainers.image.licenses=AGPL-3.0-only" \
           -t "$${IMAGE}:$${channel}" -t "$${IMAGE}:$${version}" .
+        rm -rf /cache/current && mv /cache/next /cache/current 2>/dev/null || true
         echo "Published $${IMAGE}:$${channel} and $${version} for linux/amd64 and linux/arm64"

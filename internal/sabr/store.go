@@ -24,6 +24,7 @@ type Store struct {
 	mu       sync.Mutex
 	sessions map[string]*Session
 	prewarm  map[string]prewarmed
+	taken    map[string]prewarmed
 	onHold   func(reason, videoID string)
 	onRound  func(videoID string, t RoundTiming)
 }
@@ -58,7 +59,7 @@ func NewStore(o Options) *Store {
 		}
 	}
 	st := &Store{token: NewToken(o.TokenURL), media: &http.Client{Transport: tr}, maxSessions: max(1, o.MaxSessions),
-		idle: o.Idle, budget: o.BudgetBytes, sessions: map[string]*Session{}, prewarm: map[string]prewarmed{}}
+		idle: o.Idle, budget: o.BudgetBytes, sessions: map[string]*Session{}, prewarm: map[string]prewarmed{}, taken: map[string]prewarmed{}}
 	go st.sweep()
 	return st
 }
@@ -136,13 +137,16 @@ func (st *Store) PrewarmedFor(user, video string) []string {
 	return keys
 }
 
-// PeekPrewarmed is the prewarmed session waiting under key, left waiting for the create that takes it.
+// PeekPrewarmed is the prewarmed session under key, left waiting for the create that takes it, or the one a create
+// took moments ago: a prewarm that arrives after the player already started still joins it.
 func (st *Store) PeekPrewarmed(key string) (*Session, int64) {
 	st.mu.Lock()
 	defer st.mu.Unlock()
 	p, ok := st.prewarm[key]
 	if !ok {
-		return nil, 0
+		if p, ok = st.taken[key]; !ok {
+			return nil, 0
+		}
 	}
 	return st.sessions[p.id], p.start
 }
@@ -155,6 +159,7 @@ func (st *Store) TakePrewarmed(key string) (*Session, int64) {
 		return nil, 0
 	}
 	delete(st.prewarm, key)
+	st.taken[key] = prewarmed{id: p.id, start: p.start, at: time.Now()}
 	s := st.sessions[p.id]
 	if s == nil {
 		return nil, 0
@@ -192,9 +197,11 @@ func (st *Store) sweep() {
 		for _, s := range st.sessions {
 			all = append(all, s)
 		}
-		for k, p := range st.prewarm {
-			if time.Since(p.at) > time.Minute {
-				delete(st.prewarm, k)
+		for _, m := range []map[string]prewarmed{st.prewarm, st.taken} {
+			for k, p := range m {
+				if time.Since(p.at) > time.Minute {
+					delete(m, k)
+				}
 			}
 		}
 		st.mu.Unlock()

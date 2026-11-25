@@ -113,6 +113,7 @@ func (c *Client) musicCall(ctx context.Context, endpoint string, body map[string
 	}
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
+		c.noteStatus(res.StatusCode)
 		io.Copy(io.Discard, io.LimitReader(res.Body, 1<<20))
 		return nil, fmt.Errorf("%w %d on music search", ErrStatus, res.StatusCode)
 	}

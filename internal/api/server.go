@@ -50,6 +50,7 @@ type Server struct {
 	homeWarm    *homeWarm
 	acceptance  *acceptance
 	recs        *recPools
+	rec         *recRelay
 	subs        *subtitles
 	deArrow     *dearrow
 	bili        *bilibili.Client
@@ -89,6 +90,7 @@ func New(cfg *config.Config, db *pgxpool.Pool, c *cache.Cache, log *slog.Logger)
 	srv.startYoutubeRefresh()
 	srv.startPushPoller()
 	srv.recs = newRecPools(srv)
+	srv.rec = newRecRelay(srv)
 	srv.subs = newSubtitles(srv)
 	srv.deArrow = newDeArrow(srv)
 	srv.bili = bilibili.NewClient(nil)

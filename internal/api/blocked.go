@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"net/http"
 	"regexp"
 	"strings"
@@ -58,7 +59,7 @@ func (s *Server) blockedRoutes(rt *Router) {
 	for _, kind := range []string{"channels", "videos"} {
 		kind := kind
 		rt.Handle("GET", "/blocked/"+kind, s.authed(func(w http.ResponseWriter, r *http.Request, user string) {
-			items, err := s.blockedList(r, user, kind)
+			items, err := s.blockedList(r.Context(), user, kind)
 			if err != nil {
 				s.fail(w, r, err)
 				return
@@ -182,12 +183,12 @@ ON CONFLICT (user_id, keyword) DO UPDATE SET scope = EXCLUDED.scope, blocked_at 
 	}))
 }
 
-func (s *Server) blockedList(r *http.Request, user, kind string) ([]blockedItem, error) {
+func (s *Server) blockedList(ctx context.Context, user, kind string) ([]blockedItem, error) {
 	q := `SELECT channel_url, name, thumbnail_url, blocked_at, scope FROM blocked_channels WHERE user_id = $1 OR scope = 'global' ORDER BY blocked_at DESC`
 	if kind == "videos" {
 		q = `SELECT video_url, NULL::text, NULL::text, blocked_at, scope FROM blocked_videos WHERE user_id = $1 OR scope = 'global' ORDER BY blocked_at DESC`
 	}
-	rows, err := s.DB.Query(r.Context(), q, user)
+	rows, err := s.DB.Query(ctx, q, user)
 	if err != nil {
 		return nil, err
 	}

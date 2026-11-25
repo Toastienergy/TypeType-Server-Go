@@ -60,6 +60,7 @@ func (c *Client) TVPlayer(ctx context.Context, accessToken, videoID, visitor, li
 	}
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
+		c.noteStatus(res.StatusCode)
 		io.Copy(io.Discard, io.LimitReader(res.Body, 1<<20))
 		return nil, fmt.Errorf("%w %d on tv player", ErrStatus, res.StatusCode)
 	}

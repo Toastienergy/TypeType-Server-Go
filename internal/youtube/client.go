@@ -14,6 +14,7 @@ import (
 	"slices"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -46,6 +47,16 @@ type Client struct {
 	// commentTokens keeps the comments continuation of each video page fetched, so the comments that open right
 	// after the page skip a second /next.
 	commentTokens sync.Map
+	refused       atomic.Pointer[func()]
+}
+
+// OnRefused is OkHttpDownloader.onProviderRefusal: told of every 429 YouTube answers.
+func (c *Client) OnRefused(f func()) { c.refused.Store(&f) }
+
+func (c *Client) noteStatus(code int) {
+	if f := c.refused.Load(); code == http.StatusTooManyRequests && f != nil {
+		(*f)()
+	}
 }
 
 type tokenAt struct {
@@ -140,6 +151,7 @@ func (c *Client) fetchVisitor(ctx context.Context) string {
 		return ""
 	}
 	defer res.Body.Close()
+	c.noteStatus(res.StatusCode)
 	return scanVisitor(io.LimitReader(res.Body, 4<<20))
 }
 
@@ -194,6 +206,7 @@ func (c *Client) call(ctx context.Context, ci ClientInfo, endpoint string, body 
 	}
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
+		c.noteStatus(res.StatusCode)
 		io.Copy(io.Discard, io.LimitReader(res.Body, 1<<20))
 		return nil, fmt.Errorf("%w %d on %s", ErrStatus, res.StatusCode, endpoint)
 	}

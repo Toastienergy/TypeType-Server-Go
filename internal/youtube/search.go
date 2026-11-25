@@ -172,6 +172,7 @@ func (c *Client) Suggestions(ctx context.Context, query string) ([]string, error
 		return nil, err
 	}
 	defer res.Body.Close()
+	c.noteStatus(res.StatusCode)
 	b, err := io.ReadAll(io.LimitReader(res.Body, 1<<20))
 	if err != nil {
 		return nil, err

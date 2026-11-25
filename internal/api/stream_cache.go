@@ -38,6 +38,7 @@ func (s *Server) youtubeStreamCore(ctx context.Context, id, raw string) (*stream
 		sbc := make(chan sponsorResult, 1)
 		go func() { sbc <- s.sponsor.segments(ctx, id) }()
 		watch, err := s.YT.FetchWatch(ctx, id)
+		s.rec.streamOpened(ctx, refusedByYoutube(err) || watch != nil && watch.Restriction != nil && watch.Restriction.Code == "provider_access_blocked")
 		in := <-infoc
 		if err != nil && in == nil {
 			s.Log.Warn("stream watch", "videoId", id, "err", err)

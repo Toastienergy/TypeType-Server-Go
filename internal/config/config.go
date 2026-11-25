@@ -48,6 +48,11 @@ func Load() (*Config, error) {
 	if c.InstanceID == "" {
 		c.InstanceID = "typetype"
 	}
+	// The YouTube account login (device code, TV token) lives in the token service, like the Kotlin server's
+	// TypetypeTokenYoutubeSessionClient on SUBTITLE_SERVICE_URL: without its own URL it is that one.
+	if strings.TrimSpace(c.YoutubeTokenURL) == "" {
+		c.YoutubeTokenURL = c.SubtitleService
+	}
 	if c.JWTSecret == "" {
 		b := make([]byte, 16)
 		rand.Read(b)

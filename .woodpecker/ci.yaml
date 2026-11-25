@@ -20,17 +20,16 @@ services:
   dragonfly:
     image: docker.dragonflydb.io/dragonflydb/dragonfly:v2.0.2@sha256:061f00b201b58e12f974e4e96c761a881ee1c05e9d8ee967466a604b7299753b
 
-# The module and build caches live in a volume that outlives the pipeline, so a push only compiles what changed:
-# deps fills it, the checks after it reuse the packages, and the race tests, which compile their own build, start at
-# once on Debian for its C compiler while the database services start. Go's cache is safe for concurrent writers.
+# The steps share the module and build caches through the workspace, which dies with the pipeline: no volume, so a
+# pull request cannot leave anything behind for the next build. deps compiles once and the checks after it reuse
+# the packages; the race tests compile their own build, so they start at once, on Debian for its C compiler, while
+# the database services start. Go's cache is safe for concurrent writers.
 steps:
   - name: deps
     image: golang:1.27.4-alpine3.24@sha256:0a5f7fe796599ff487605987432e7619ae45beeb2fba4c2ce0b907879932aebf
-    volumes:
-      - typetype-server-go-cache:/cache
     environment:
-      GOMODCACHE: /cache/mod
-      GOCACHE: /cache/build
+      GOMODCACHE: /woodpecker/go/mod
+      GOCACHE: /woodpecker/go/build
       GOFLAGS: -mod=readonly
     commands:
       - go mod download
@@ -39,11 +38,9 @@ steps:
   - name: format-vet
     image: golang:1.27.4-alpine3.24@sha256:0a5f7fe796599ff487605987432e7619ae45beeb2fba4c2ce0b907879932aebf
     depends_on: [deps]
-    volumes:
-      - typetype-server-go-cache:/cache
     environment:
-      GOMODCACHE: /cache/mod
-      GOCACHE: /cache/build
+      GOMODCACHE: /woodpecker/go/mod
+      GOCACHE: /woodpecker/go/build
       GOFLAGS: -mod=readonly
     commands:
       - |
@@ -57,11 +54,9 @@ steps:
   - name: test
     image: golang:1.27.4-bookworm@sha256:ce59b41415e2524ae99926fe1f37ce48ba8c194dcbd2a56a65436cdcefa2bd34
     depends_on: []
-    volumes:
-      - typetype-server-go-cache:/cache
     environment:
-      GOMODCACHE: /cache/mod
-      GOCACHE: /cache/build
+      GOMODCACHE: /woodpecker/go/mod
+      GOCACHE: /woodpecker/go/build
       GOFLAGS: -mod=readonly
       CGO_ENABLED: "1"
       TEST_DATABASE_URL: postgres://typetype:typetype-ci-only@postgres:5432/typetype
@@ -79,11 +74,9 @@ steps:
   - name: build
     image: golang:1.27.4-alpine3.24@sha256:0a5f7fe796599ff487605987432e7619ae45beeb2fba4c2ce0b907879932aebf
     depends_on: [deps]
-    volumes:
-      - typetype-server-go-cache:/cache
     environment:
-      GOMODCACHE: /cache/mod
-      GOCACHE: /cache/build
+      GOMODCACHE: /woodpecker/go/mod
+      GOCACHE: /woodpecker/go/build
       GOFLAGS: -mod=readonly
       CGO_ENABLED: "0"
     commands:
@@ -92,10 +85,8 @@ steps:
   - name: vulncheck
     image: golang:1.27.4-alpine3.24@sha256:0a5f7fe796599ff487605987432e7619ae45beeb2fba4c2ce0b907879932aebf
     depends_on: [deps]
-    volumes:
-      - typetype-server-go-cache:/cache
     environment:
-      GOMODCACHE: /cache/mod
-      GOCACHE: /cache/build
+      GOMODCACHE: /woodpecker/go/mod
+      GOCACHE: /woodpecker/go/build
     commands:
       - go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...

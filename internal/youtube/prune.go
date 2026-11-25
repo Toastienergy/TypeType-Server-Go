@@ -4,6 +4,8 @@ import (
 	"encoding/json/jsontext"
 	"errors"
 	"io"
+	"strings"
+	"sync"
 )
 
 // channelSkip lists containers of a channel browse answer that no parser reads. A videos tab is about 480 KB, and
@@ -16,11 +18,22 @@ var channelSkip = map[string]bool{
 	"accessibilityContext": true, "frameworkUpdates": true,
 }
 
+// decoders keep their read buffer between answers; duplicate member names are allowed, as encoding/json does
+// (the last one wins), which also spares a name set per object.
+var decoders = sync.Pool{New: func() any { return jsontext.NewDecoder(noInput) }}
+
+var noInput = strings.NewReader("")
+
 // decodePruned decodes a JSON object as encoding/json does into map[string]any (numbers as float64), leaving out
 // every member whose name is in skip, at any depth.
 func decodePruned(r io.Reader, skip map[string]bool) (map[string]any, error) {
-	d := jsontext.NewDecoder(r)
-	v, err := prunedValue(d, skip)
+	d := decoders.Get().(*jsontext.Decoder)
+	d.Reset(r, jsontext.AllowDuplicateNames(true))
+	defer func() {
+		d.Reset(noInput)
+		decoders.Put(d)
+	}()
+	v, err := (&pruner{d: d, skip: skip, names: map[string]string{}}).value()
 	if err != nil {
 		return nil, err
 	}
@@ -31,7 +44,33 @@ func decodePruned(r io.Reader, skip map[string]bool) (map[string]any, error) {
 	return m, nil
 }
 
-func prunedValue(d *jsontext.Decoder, skip map[string]bool) (any, error) {
+// pruner reads one answer; names keeps each member name once, since the same few hundred names repeat
+// thousands of times in a page.
+type pruner struct {
+	d     *jsontext.Decoder
+	skip  map[string]bool
+	names map[string]string
+}
+
+func (p *pruner) name() (string, error) {
+	raw, err := p.d.ReadValue()
+	if err != nil {
+		return "", err
+	}
+	if n, ok := p.names[string(raw)]; ok {
+		return n, nil
+	}
+	b, err := jsontext.AppendUnquote(nil, raw)
+	if err != nil {
+		return "", err
+	}
+	n := string(b)
+	p.names[string(raw)] = n
+	return n, nil
+}
+
+func (p *pruner) value() (any, error) {
+	d := p.d
 	tok, err := d.ReadToken()
 	if err != nil {
 		return nil, err
@@ -40,18 +79,17 @@ func prunedValue(d *jsontext.Decoder, skip map[string]bool) (any, error) {
 	case '{':
 		m := map[string]any{}
 		for d.PeekKind() != '}' {
-			name, err := d.ReadToken()
+			key, err := p.name()
 			if err != nil {
 				return nil, err
 			}
-			key := name.String()
-			if skip[key] {
+			if p.skip[key] {
 				if err := d.SkipValue(); err != nil {
 					return nil, err
 				}
 				continue
 			}
-			if m[key], err = prunedValue(d, skip); err != nil {
+			if m[key], err = p.value(); err != nil {
 				return nil, err
 			}
 		}
@@ -60,7 +98,7 @@ func prunedValue(d *jsontext.Decoder, skip map[string]bool) (any, error) {
 	case '[':
 		var list []any
 		for d.PeekKind() != ']' {
-			v, err := prunedValue(d, skip)
+			v, err := p.value()
 			if err != nil {
 				return nil, err
 			}

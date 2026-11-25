@@ -22,18 +22,9 @@ type recPools struct {
 	mu       sync.Mutex
 	building map[string]bool
 	trend    map[int]trendEntry
-	// decoded keeps the last pool decoded for each key with the raw value it came from: a pool is a few hundred KB
-	// of JSON read from Dragonfly on every home or Shorts page, and decoding it was most of the request. Dragonfly
-	// stays the source; a changed value is decoded again. Pools are only read once resolved.
-	decoded map[string]decodedPool
+	// decoded spares decoding the pool, a few hundred KB, on every home or Shorts page.
+	decoded decodedValues[*recommend.Pool]
 }
-
-type decodedPool struct {
-	raw  string
-	pool *recommend.Pool
-}
-
-const decodedPools = 64
 
 type trendEntry struct {
 	items []youtube.VideoItem
@@ -46,7 +37,7 @@ const (
 )
 
 func newRecPools(s *Server) *recPools {
-	return &recPools{s: s, building: map[string]bool{}, trend: map[int]trendEntry{}, decoded: map[string]decodedPool{}}
+	return &recPools{s: s, building: map[string]bool{}, trend: map[int]trendEntry{}}
 }
 
 type signals struct {
@@ -67,26 +58,8 @@ func (p *recPools) read(ctx context.Context, key string) (*recommend.Pool, bool)
 	if !ok {
 		return nil, false
 	}
-	p.mu.Lock()
-	d, ok := p.decoded[key]
-	p.mu.Unlock()
-	if ok && d.raw == v {
-		return d.pool, true
-	}
-	var pool recommend.Pool
-	if json.Unmarshal([]byte(v), &pool) != nil {
-		return nil, false
-	}
-	p.mu.Lock()
-	if len(p.decoded) >= decodedPools {
-		for k := range p.decoded {
-			delete(p.decoded, k)
-			break
-		}
-	}
-	p.decoded[key] = decodedPool{raw: v, pool: &pool}
-	p.mu.Unlock()
-	return &pool, true
+	pool, ok := p.decoded.decode(key, v)
+	return pool, ok && pool != nil
 }
 
 func (p *recPools) trending(ctx context.Context, svc int) []youtube.VideoItem {

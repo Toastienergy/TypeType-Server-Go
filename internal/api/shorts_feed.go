@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -25,13 +26,17 @@ func shortsKey(user string) string {
 	return "feed:shorts:" + hex.EncodeToString(sum[:])
 }
 
+// decodedShorts spares decoding the whole subscription Shorts feed for each page of it.
+var decodedShorts decodedValues[[]youtube.VideoItem]
+
 func (s *Server) cachedShorts(ctx context.Context, user string) ([]youtube.VideoItem, bool) {
-	v, ok, _ := s.Cache.Get(ctx, shortsKey(user))
+	key := shortsKey(user)
+	v, ok, _ := s.Cache.Get(ctx, key)
 	if !ok {
 		return nil, false
 	}
-	var out []youtube.VideoItem
-	return out, json.Unmarshal([]byte(v), &out) == nil
+	out, ok := decodedShorts.decode(key, v)
+	return slices.Clip(out), ok
 }
 
 func shortsTab(channel string) string {
@@ -171,9 +176,9 @@ func pageOf(all []youtube.VideoItem, page, limit int) ([]youtube.VideoItem, *str
 	to := min(from+limit, len(all))
 	if to < len(all) {
 		n := strconv.Itoa(page + 1)
-		return all[from:to], &n
+		return all[from:to:to], &n
 	}
-	return all[from:to], nil
+	return all[from:to:to], nil
 }
 
 func shortScore(v youtube.VideoItem, sub bool, now int64) float64 {

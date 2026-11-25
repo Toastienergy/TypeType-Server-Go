@@ -15,7 +15,7 @@ func recPoolOf(n int) recommend.Pool {
 
 func TestRecPoolReadDecodesOnlyChangedValues(t *testing.T) {
 	s := testCacheServer(t)
-	p := &recPools{s: s, building: map[string]bool{}, trend: map[int]trendEntry{}, decoded: map[string]decodedPool{}}
+	p := &recPools{s: s, building: map[string]bool{}, trend: map[int]trendEntry{}}
 	key := "test:rec-pool-read:" + time.Now().Format(time.RFC3339Nano)
 	t.Cleanup(func() { s.Cache.Delete(t.Context(), key) })
 	a, _ := json.Marshal(recPoolOf(40))
@@ -43,5 +43,14 @@ func BenchmarkRecPoolDecode(b *testing.B) {
 	for b.Loop() {
 		var pool recommend.Pool
 		json.Unmarshal(raw, &pool)
+	}
+}
+
+func TestShortsPagesCannotWriteIntoTheSharedFeed(t *testing.T) {
+	all := feedOf(10).videos
+	page, _ := pageOf(all, 0, 4)
+	_ = append(page, all[9])
+	if all[4].URL == all[9].URL {
+		t.Fatal("appending to a page wrote into the feed")
 	}
 }

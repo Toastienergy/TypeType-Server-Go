@@ -114,7 +114,9 @@ func downloadSabr(ctx context.Context, ss *sabr.Session, formats []*sabr.Format,
 			}
 			return errors.New("SABR download stalled without receiving media")
 		}
-		if err := emit(frameMedia, t.f.Itag, t.next, seg.Data()); err != nil {
+		err := emit(frameMedia, t.f.Itag, t.next, seg.Data())
+		seg.Release()
+		if err != nil {
 			return err
 		}
 		t.next++

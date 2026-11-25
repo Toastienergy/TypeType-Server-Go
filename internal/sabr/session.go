@@ -2,6 +2,7 @@ package sabr
 
 import (
 	"context"
+	"runtime"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -16,6 +17,10 @@ type Segment struct {
 	DurMs   int64
 	data    []byte
 	done    bool
+	heap    bool
+	refs    atomic.Int32
+	cleanup runtime.Cleanup
+	armed   bool
 }
 
 func (s *Segment) EndMs() int64 { return s.StartMs + s.DurMs }
@@ -108,6 +113,7 @@ type Session struct {
 	abortRequest context.CancelFunc
 	wake         chan struct{}
 	bytes        int64
+	released     bool
 	readyOnce    bool
 	requests     atomic.Int64
 	protection   atomic.Int32
@@ -278,6 +284,7 @@ func (s *Session) Media(ctx context.Context, itag, seq int, timeout time.Duratio
 			return nil, false
 		}
 		if seg := t.segs[seq]; seg != nil && seg.done {
+			seg.retain()
 			s.touch()
 			s.mu.Unlock()
 			return seg, true

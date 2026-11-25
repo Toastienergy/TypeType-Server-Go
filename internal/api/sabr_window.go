@@ -276,6 +276,7 @@ func (s *Server) sabrMedia(isInit bool) http.HandlerFunc {
 		} else {
 			var seg *sabr.Segment
 			if seg, ok = ss.Media(r.Context(), itag, seq, max(wait, time.Millisecond)); ok {
+				defer seg.Release()
 				data = seg.Data()
 			}
 		}

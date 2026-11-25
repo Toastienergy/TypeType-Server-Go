@@ -101,6 +101,7 @@ func (st *Store) Release(s *Session) {
 	st.mu.Unlock()
 	s.cancel()
 	s.mu.Lock()
+	s.dropMediaLocked()
 	s.notify()
 	s.mu.Unlock()
 }
@@ -206,6 +207,7 @@ func (s *Session) trimAheadLocked() {
 				t.bytes -= int64(len(sg.data))
 				s.bytes -= int64(len(sg.data))
 				delete(t.segs, k)
+				sg.Release()
 			}
 		}
 	}

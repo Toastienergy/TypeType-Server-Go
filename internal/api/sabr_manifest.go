@@ -163,6 +163,7 @@ func (s *Server) legacyMedia(isInit bool) http.HandlerFunc {
 			plain(w, r, http.StatusNotFound, "Segment not available")
 			return
 		}
+		defer seg.Release()
 		writeMedia(w, r, containerMime(f.MimeType), seg.Data())
 	}
 }

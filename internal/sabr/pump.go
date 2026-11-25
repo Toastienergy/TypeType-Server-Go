@@ -10,7 +10,6 @@ import (
 	"io"
 	"math"
 	"net/http"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -326,6 +325,13 @@ func parseHeader(data []byte) mediaHeader {
 
 func (s *Session) readUMP(r *bufio.Reader, in *Info, cookie *[]byte, out *roundResult) error {
 	parts := map[int]*pending{}
+	defer func() {
+		for _, p := range parts {
+			if p != nil && p.seg != nil {
+				p.seg.Release()
+			}
+		}
+	}()
 	// Control parts are read into one reused buffer: nothing below keeps a slice of it, only copies.
 	var scratch []byte
 	var free []*pending
@@ -354,10 +360,8 @@ func (s *Session) readUMP(r *bufio.Reader, in *Info, cookie *[]byte, out *roundR
 				continue
 			}
 			n := size - 1
+			p.seg.grow(n)
 			buf := p.seg.data
-			if cap(buf)-len(buf) < n {
-				buf = slices.Grow(buf, n)
-			}
 			if _, err := io.ReadFull(r, buf[len(buf):len(buf)+n]); err != nil {
 				return err
 			}
@@ -393,8 +397,12 @@ func (s *Session) readUMP(r *bufio.Reader, in *Info, cookie *[]byte, out *roundR
 				p.skip = old != nil && old.done
 			}
 			s.mu.Unlock()
-			if !p.skip {
-				p.seg = &Segment{Seq: h.seq, StartMs: h.startMs, DurMs: h.durMs, data: make([]byte, 0, max(h.contentLength, 0))}
+			switch {
+			case p.skip:
+			case h.init:
+				p.seg = newInitSegment(max(h.contentLength, 0))
+			default:
+				p.seg = newSegment(h.seq, h.startMs, h.durMs, max(h.contentLength, 0))
 			}
 			parts[h.id] = p
 		case 22:
@@ -415,12 +423,14 @@ func (s *Session) readUMP(r *bufio.Reader, in *Info, cookie *[]byte, out *roundR
 				if !p.t.inited {
 					p.t.init, p.t.inited = p.seg.data, true
 				}
-			} else if old := p.t.segs[p.seg.Seq]; old == nil || !old.done {
+			} else if old := p.t.segs[p.seg.Seq]; !s.released && (old == nil || !old.done) {
 				p.seg.done = true
 				p.t.segs[p.seg.Seq] = p.seg
 				p.t.bytes += int64(len(p.seg.data))
 				s.bytes += int64(len(p.seg.data))
 				out.media++
+			} else {
+				p.seg.Release()
 			}
 			s.notify()
 			s.mu.Unlock()
@@ -474,6 +484,7 @@ func (s *Session) evictLocked() {
 				t.bytes -= int64(len(sg.data))
 				s.bytes -= int64(len(sg.data))
 				delete(t.segs, k)
+				sg.Release()
 			}
 		}
 	}

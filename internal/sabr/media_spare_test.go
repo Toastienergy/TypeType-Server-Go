@@ -70,3 +70,26 @@ func BenchmarkMediaAllocFree(b *testing.B) {
 		})
 	}
 }
+
+func TestFullSpareListDropsItsOldestMappings(t *testing.T) {
+	trimSpare(0)
+	held := make([][]byte, 40)
+	for i := range held {
+		held[i] = mediaAlloc(1 << 20)
+	}
+	first := unsafe.Pointer(unsafe.SliceData(held[0][:1]))
+	for _, m := range held {
+		mediaFree(m)
+	}
+	small := mediaAlloc(200 << 10)
+	newest := unsafe.Pointer(unsafe.SliceData(small[:1]))
+	mediaFree(small)
+	spare.Lock()
+	_, firstKept := spare.mapped[first]
+	_, newestKept := spare.mapped[newest]
+	spare.Unlock()
+	if firstKept || !newestKept || spareBytes() > spareMax {
+		t.Fatalf("oldest kept %v, newest kept %v, %d spare bytes", firstKept, newestKept, spareBytes())
+	}
+	trimSpare(0)
+}

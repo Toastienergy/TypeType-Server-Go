@@ -4,6 +4,7 @@ package sabr
 
 import (
 	"os"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -52,9 +53,7 @@ func mediaAlloc(n int) []byte {
 	}
 	if best >= 0 {
 		m := spare.maps[best]
-		last := len(spare.maps) - 1
-		spare.maps[best], spare.maps[last] = spare.maps[last], nil
-		spare.maps = spare.maps[:last]
+		spare.maps = slices.Delete(spare.maps, best, best+1)
 		spare.bytes -= cap(m)
 		spare.used = time.Now()
 		spare.Unlock()
@@ -90,16 +89,28 @@ func mediaFree(b []byte) {
 		return
 	}
 	mappedBytes.Add(-int64(len(b)))
-	if spare.bytes+len(b) <= spareMax {
-		spare.maps = append(spare.maps, b)
-		spare.bytes += len(b)
-		spare.used = time.Now()
+	if len(b) > spareMax {
+		delete(spare.mapped, p)
 		spare.Unlock()
+		syscall.Munmap(b)
 		return
 	}
-	delete(spare.mapped, p)
+	// The oldest spares make room: they were sized for segments already played, the newest fit the next ones.
+	var old [][]byte
+	for spare.bytes+len(b) > spareMax {
+		o := spare.maps[0]
+		spare.maps = spare.maps[1:]
+		spare.bytes -= cap(o)
+		delete(spare.mapped, unsafe.Pointer(unsafe.SliceData(o)))
+		old = append(old, o)
+	}
+	spare.maps = append(spare.maps, b)
+	spare.bytes += len(b)
+	spare.used = time.Now()
 	spare.Unlock()
-	syscall.Munmap(b)
+	for _, o := range old {
+		syscall.Munmap(o)
+	}
 }
 
 // trimSpare unmaps every spare mapping when no session plays or the list was left alone for spareIdle, so an idle

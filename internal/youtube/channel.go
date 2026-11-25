@@ -79,7 +79,7 @@ func (c *Client) Channel(ctx context.Context, raw, page string) (*Channel, error
 		if !ok || len(parts) != 4 {
 			return nil, ErrBadPage
 		}
-		res, err := c.Call(ctx, Web, "browse", map[string]any{"continuation": parts[3]})
+		res, err := c.call(ctx, Web, "browse", map[string]any{"continuation": parts[3]}, channelSkip)
 		if err != nil {
 			return nil, err
 		}
@@ -95,10 +95,15 @@ func (c *Client) Channel(ctx context.Context, raw, page string) (*Channel, error
 	if err != nil {
 		return nil, err
 	}
-	res, err := c.Call(ctx, Web, "browse", map[string]any{"browseId": id, "params": tabParams[tab]})
+	res, err := c.call(ctx, Web, "browse", map[string]any{"browseId": id, "params": tabParams[tab]}, channelSkip)
 	if err != nil {
 		return nil, err
 	}
+	return c.channelPage(id, res), nil
+}
+
+// channelPage reads a channel's first browse page: its header and the selected tab's videos.
+func (c *Client) channelPage(id string, res map[string]any) *Channel {
 	ch := &Channel{Videos: []VideoItem{}, SubscriberCount: -1, ID: id}
 	parseChannelHeader(ch, res)
 	for _, t := range List(res, "contents", "twoColumnBrowseResultsRenderer", "tabs") {
@@ -112,7 +117,7 @@ func (c *Client) Channel(ctx context.Context, raw, page string) (*Channel, error
 		}
 		c.fillGrid(ch, items)
 	}
-	return ch, nil
+	return ch
 }
 
 func (c *Client) fillGrid(ch *Channel, items []any) {

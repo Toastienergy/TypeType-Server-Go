@@ -121,6 +121,11 @@ var ErrStatus = errors.New("innertube status")
 
 // Call posts to /youtubei/v1/{endpoint} as the given client and decodes the answer.
 func (c *Client) Call(ctx context.Context, ci ClientInfo, endpoint string, body map[string]any) (map[string]any, error) {
+	return c.call(ctx, ci, endpoint, body, nil)
+}
+
+// call is Call; with skip, members of those names are left out of the decoded answer at any depth.
+func (c *Client) call(ctx context.Context, ci ClientInfo, endpoint string, body map[string]any, skip map[string]bool) (map[string]any, error) {
 	visitor := c.Visitor(ctx)
 	client := map[string]any{"clientName": ci.Name, "clientVersion": ci.Version, "hl": "en", "gl": "US"}
 	if visitor != "" {
@@ -147,6 +152,9 @@ func (c *Client) Call(ctx context.Context, ci ClientInfo, endpoint string, body 
 	if res.StatusCode != http.StatusOK {
 		io.Copy(io.Discard, io.LimitReader(res.Body, 1<<20))
 		return nil, fmt.Errorf("%w %d on %s", ErrStatus, res.StatusCode, endpoint)
+	}
+	if skip != nil {
+		return decodePruned(res.Body, skip)
 	}
 	var out map[string]any
 	if err := json.NewDecoder(res.Body).Decode(&out); err != nil {

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"sync"
 )
 
 type ctxKey int
@@ -36,18 +37,36 @@ func marshal(v any) ([]byte, error) {
 	return bytes.TrimSuffix(buf.Bytes(), []byte("\n")), nil
 }
 
+// Shared one-value header slices: Header.Set allocates a slice on every call, and nothing writes into these.
+var (
+	jsonType     = []string{"application/json"}
+	gzipEncoding = []string{"gzip"}
+	trueValue    = []string{"true"}
+)
+
+var jsonBuffers = sync.Pool{New: func() any { return new(bytes.Buffer) }}
+
+// JSON encodes into a recycled buffer: ResponseWriter.Write does not keep the slice, and buffers past 1 MiB are
+// dropped so one large answer does not stay pinned in the pool.
 func JSON(w http.ResponseWriter, status int, v any) {
-	b, err := marshal(v)
-	if err != nil {
+	buf := jsonBuffers.Get().(*bytes.Buffer)
+	buf.Reset()
+	enc := json.NewEncoder(buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(v); err != nil {
+		jsonBuffers.Put(buf)
 		Error(w, nil, http.StatusInternalServerError, "Internal server error", "internal_error")
 		return
 	}
-	RawJSON(w, status, b)
+	RawJSON(w, status, bytes.TrimSuffix(buf.Bytes(), []byte("\n")))
+	if buf.Cap() <= 1<<20 {
+		jsonBuffers.Put(buf)
+	}
 }
 
 func RawJSON(w http.ResponseWriter, status int, b []byte) {
 	h := w.Header()
-	h.Set("Content-Type", "application/json")
+	h["Content-Type"] = jsonType
 	w.WriteHeader(status)
 	w.Write(b)
 }

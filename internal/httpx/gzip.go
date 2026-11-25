@@ -69,7 +69,7 @@ func (g *gzipWriter) decide(compress bool) {
 	if compress {
 		h := g.Header()
 		h.Del("Content-Length")
-		h.Set("Content-Encoding", "gzip")
+		h["Content-Encoding"] = gzipEncoding
 		g.gz = gzipPool.Get().(*gzip.Writer)
 		g.gz.Reset(g.ResponseWriter)
 	}
@@ -95,11 +95,12 @@ func (g *gzipWriter) Write(b []byte) (int, error) {
 		g.decide(false)
 		return g.write(b)
 	}
-	g.buf = append(g.buf, b...)
-	if len(g.buf) >= gzipMinSize {
-		g.decide(true)
+	if len(g.buf)+len(b) < gzipMinSize {
+		g.buf = append(g.buf, b...)
+		return len(b), nil
 	}
-	return len(b), nil
+	g.decide(true)
+	return g.write(b)
 }
 
 func (g *gzipWriter) Flush() {

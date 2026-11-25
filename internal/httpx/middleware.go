@@ -15,8 +15,8 @@ import (
 var requestIDRe = regexp.MustCompile(`^[A-Za-z0-9._-]{8,128}$`)
 
 const (
-	RequestIDHeader     = "X-Request-ID"
-	PlaybackTraceHeader = "X-Playback-Trace-ID"
+	RequestIDHeader     = "X-Request-Id"
+	PlaybackTraceHeader = "X-Playback-Trace-Id"
 )
 
 type statusWriter struct {
@@ -151,7 +151,7 @@ func CORS(allowed map[string]bool, any bool, next http.Handler) http.Handler {
 		h := w.Header()
 		h.Add("Vary", "Origin")
 		h.Set("Access-Control-Allow-Origin", origin)
-		h.Set("Access-Control-Allow-Credentials", "true")
+		h["Access-Control-Allow-Credentials"] = trueValue
 		if r.Method == http.MethodOptions && r.Header.Get("Access-Control-Request-Method") != "" {
 			if !methods[r.Header.Get("Access-Control-Request-Method")] {
 				w.WriteHeader(http.StatusForbidden)

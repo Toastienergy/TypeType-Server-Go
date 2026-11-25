@@ -15,10 +15,11 @@ when:
 
 depends_on: [ci]
 
-# The channels of the other TypeType images: dev builds typetype-server-go-beta (dev, beta, latest and
+# The channels and tags of the other TypeType images: dev builds typetype-server-go-beta (dev, beta, latest and
 # <last release>-beta.<pipeline>), a vX.Y.Z-rc.N tag publishes X.Y.Z-rc.N and rc, a vX.Y.Z tag publishes X.Y.Z and
-# latest; pushes to beta and main build nothing. ko builds both architectures with the Go toolchain on the
-# distroless base and pushes: no Docker daemon, no privileged container and no volume.
+# latest; pushes to beta and main build nothing. Each tag also gets -amd64 and -arm64 for the single-architecture
+# image. ko builds both architectures with the Go toolchain on the distroless base and pushes: no Docker daemon, no
+# privileged container and no volume.
 steps:
   - name: publish
     image: golang:1.27.4-alpine3.24@sha256:0a5f7fe796599ff487605987432e7619ae45beeb2fba4c2ce0b907879932aebf
@@ -42,9 +43,9 @@ steps:
         if [ -n "$$tag" ]; then
           version="$${tag#v}"
           if printf '%s\n' "$$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$$'; then
-            tags="$$version,latest"
+            tags="$$version latest"
           elif printf '%s\n' "$$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$$'; then
-            tags="$$version,rc"
+            tags="$$version rc"
           else
             echo "Version tags look like v1.2.3 or v1.2.3-rc.1, got $$tag" >&2
             exit 1
@@ -53,7 +54,7 @@ steps:
         else
           release="$$(git describe --tags --abbrev=0 --match 'v[0-9]*' --exclude '*-*' 2>/dev/null || echo v0.0.0)"
           version="$${release#v}-beta.$${CI_PIPELINE_NUMBER}"
-          tags="dev,beta,latest,$$version"
+          tags="dev beta latest $$version"
           export KO_DOCKER_REPO=ghcr.io/typetype-video/typetype-server-go-beta
         fi
         export VERSION="$$version" REVISION="$${CI_COMMIT_SHA}"
@@ -61,7 +62,7 @@ steps:
         export BUILD_TIME="$$(date -u +%Y-%m-%dT%H:%M:%SZ)"
         ko="go run github.com/google/ko@v0.19.1"
         printf '%s' "$${GHCR_TOKEN}" | $$ko login ghcr.io -u "$${GHCR_USER}" --password-stdin
-        $$ko build --bare --sbom=none --tags "$$tags" \
+        $$ko build --bare --sbom=none --tags "$$(printf '%s' "$$tags" | tr ' ' ',')" \
           --image-label "org.opencontainers.image.source=https://github.com/TypeType-Video/TypeType-Server-Go" \
           --image-label "org.opencontainers.image.revision=$${REVISION}" \
           --image-label "org.opencontainers.image.version=$${VERSION}" \
@@ -70,4 +71,11 @@ steps:
           --image-annotation "org.opencontainers.image.description=TypeType Server in Go" \
           --image-annotation "org.opencontainers.image.licenses=AGPL-3.0-only" \
           ./cmd/typetype-server
-        echo "Published $${KO_DOCKER_REPO} $$tags"
+        crane="go run github.com/google/go-containerregistry/cmd/crane@v0.20.6"
+        for arch in amd64 arm64; do
+          digest="$$($$crane digest --platform "linux/$$arch" "$${KO_DOCKER_REPO}:$$version")"
+          for name in $$tags; do
+            $$crane tag "$${KO_DOCKER_REPO}@$$digest" "$$name-$$arch"
+          done
+        done
+        echo "Published $${KO_DOCKER_REPO} $$tags, each also as -amd64 and -arm64"

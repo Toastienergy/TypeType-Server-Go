@@ -62,7 +62,7 @@ func (c *Client) Comments(ctx context.Context, videoID, page string) (CommentsPa
 		}
 		token = t
 	} else if token = c.knownComments(videoID); token == "" {
-		n, err := c.Call(ctx, Web, "next", map[string]any{"videoId": videoID})
+		n, err := c.call(ctx, Web, "next", map[string]any{"videoId": videoID}, nextSkip)
 		if err != nil {
 			return out, err
 		}

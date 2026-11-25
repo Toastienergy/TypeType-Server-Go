@@ -23,6 +23,11 @@ var channelSkip = map[string]bool{
 // nextSkip is channelSkip for a watch page's next answer (about 780 KB), plus its description panel copy, end
 // screen overlays, merchandise shelf, consent interstitial and language list, which no parser reads either.
 // frameworkUpdates stays: comments read their entities there.
+// trackingSkip is what every answer carries for YouTube's own logging; nothing here reads it.
+var trackingSkip = map[string]bool{
+	"trackingParams": true, "clickTrackingParams": true, "loggingContext": true, "loggingDirectives": true,
+}
+
 // playerSkip leaves out the tracking, ads and player configuration of the WEB and ANDROID_VR player answers
 // FetchWatch reads; the SABR session asks its own player for the configuration.
 var playerSkip = map[string]bool{

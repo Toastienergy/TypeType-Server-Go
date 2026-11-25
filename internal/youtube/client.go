@@ -162,12 +162,12 @@ func scanVisitor(r io.Reader) string {
 
 var ErrStatus = errors.New("innertube status")
 
-// Call posts to /youtubei/v1/{endpoint} as the given client and decodes the answer.
+// Call posts to /youtubei/v1/{endpoint} as the given client and decodes the answer without its tracking members.
 func (c *Client) Call(ctx context.Context, ci ClientInfo, endpoint string, body map[string]any) (map[string]any, error) {
-	return c.call(ctx, ci, endpoint, body, nil)
+	return c.call(ctx, ci, endpoint, body, trackingSkip)
 }
 
-// call is Call; with skip, members of those names are left out of the decoded answer at any depth.
+// call is Call; members named in skip are left out of the decoded answer at any depth.
 func (c *Client) call(ctx context.Context, ci ClientInfo, endpoint string, body map[string]any, skip map[string]bool) (map[string]any, error) {
 	visitor := c.Visitor(ctx)
 	client := map[string]any{"clientName": ci.Name, "clientVersion": ci.Version, "hl": "en", "gl": "US"}
@@ -196,14 +196,7 @@ func (c *Client) call(ctx context.Context, ci ClientInfo, endpoint string, body 
 		io.Copy(io.Discard, io.LimitReader(res.Body, 1<<20))
 		return nil, fmt.Errorf("%w %d on %s", ErrStatus, res.StatusCode, endpoint)
 	}
-	if skip != nil {
-		return decodePruned(res.Body, skip)
-	}
-	var out map[string]any
-	if err := json.NewDecoder(res.Body).Decode(&out); err != nil {
-		return nil, err
-	}
-	return out, nil
+	return decodePruned(res.Body, skip)
 }
 
 // Reset drops the visitor id, the remembered comment tokens and the idle connections, after the egress changed.

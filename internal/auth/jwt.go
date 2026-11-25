@@ -46,46 +46,49 @@ type header struct {
 // Verify checks the algorithm, the signature and the time claims (exp, nbf, iat), with no leeway, like
 // JWT.require(HMAC256).build().verify().
 func Verify(secret []byte, token string, now time.Time) (Claims, error) {
-	var c Claims
+	v, err := parseSigned(secret, token)
+	if err != nil || !v.validAt(now) {
+		return Claims{}, errToken
+	}
+	return v.Claims, nil
+}
+
+// signedClaims are the claims of a token whose signature checked out, with the times validAt compares.
+type signedClaims struct {
+	Claims
+	NotBefore *int64 `json:"nbf"`
+	IssuedAt  *int64 `json:"iat"`
+}
+
+func parseSigned(secret []byte, token string) (signedClaims, error) {
+	var raw signedClaims
 	parts := strings.Split(token, ".")
 	if len(parts) != 3 {
-		return c, errToken
+		return raw, errToken
 	}
 	hb, err := b64.DecodeString(parts[0])
 	if err != nil {
-		return c, errToken
+		return raw, errToken
 	}
 	var h header
 	if json.Unmarshal(hb, &h) != nil || h.Alg != "HS256" {
-		return c, errToken
+		return raw, errToken
 	}
 	sig, err := b64.DecodeString(parts[2])
 	if err != nil || !hmac.Equal(sig, mac(secret, parts[0]+"."+parts[1])) {
-		return c, errToken
+		return raw, errToken
 	}
 	pb, err := b64.DecodeString(parts[1])
-	if err != nil {
-		return c, errToken
+	if err != nil || json.Unmarshal(pb, &raw) != nil {
+		return signedClaims{}, errToken
 	}
-	var raw struct {
-		Claims
-		NotBefore *int64 `json:"nbf"`
-		IssuedAt  *int64 `json:"iat"`
-	}
-	if json.Unmarshal(pb, &raw) != nil {
-		return c, errToken
-	}
+	return raw, nil
+}
+
+func (c signedClaims) validAt(now time.Time) bool {
 	sec := now.Unix()
-	if raw.Expires != 0 && sec > raw.Expires {
-		return c, errToken
-	}
-	if raw.NotBefore != nil && sec < *raw.NotBefore {
-		return c, errToken
-	}
-	if raw.IssuedAt != nil && sec < *raw.IssuedAt {
-		return c, errToken
-	}
-	return raw.Claims, nil
+	return (c.Expires == 0 || sec <= c.Expires) && (c.NotBefore == nil || sec >= *c.NotBefore) &&
+		(c.IssuedAt == nil || sec >= *c.IssuedAt)
 }
 
 // SignAny signs any JSON claims set with HS256, for tokens that are not sessions (the OIDC state).

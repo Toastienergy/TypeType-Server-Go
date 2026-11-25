@@ -15,21 +15,27 @@ type Metrics struct {
 	total, durationMs atomic.Int64
 	mu                sync.Mutex
 	status            map[int]int64
-	routes            map[string]int64
+	routes            map[routeKey]int64
 }
 
-var Global = &Metrics{status: map[int]int64{}, routes: map[string]int64{}}
+// routeKey is a struct so recording a request builds no string.
+type routeKey struct {
+	route  string
+	status int
+}
+
+var Global = &Metrics{status: map[int]int64{}, routes: map[routeKey]int64{}}
 
 func (m *Metrics) record(route string, status int, ms int64) {
 	m.total.Add(1)
 	m.durationMs.Add(ms)
-	key := route + "|" + strconv.Itoa(status)
+	key := routeKey{route, status}
 	m.mu.Lock()
 	m.status[status]++
 	if _, ok := m.routes[key]; ok || len(m.routes) < 512 {
 		m.routes[key]++
 	} else {
-		m.routes["/__other__|"+strconv.Itoa(status)]++
+		m.routes[routeKey{"/__other__", status}]++
 	}
 	m.mu.Unlock()
 }
@@ -52,18 +58,22 @@ func (m *Metrics) Snapshot() string {
 	for _, c := range codes {
 		fmt.Fprintf(&b, "requests.status.%d=%d\n", c, m.status[c])
 	}
-	keys := make([]string, 0, len(m.routes))
+	keys := make([]routeKey, 0, len(m.routes))
 	for k := range m.routes {
 		keys = append(keys, k)
 	}
-	sort.Strings(keys)
+	sort.Slice(keys, func(i, j int) bool {
+		if keys[i].route != keys[j].route {
+			return keys[i].route < keys[j].route
+		}
+		return strconv.Itoa(keys[i].status) < strconv.Itoa(keys[j].status)
+	})
 	for _, k := range keys {
-		route, status, _ := strings.Cut(k, "|")
-		name := strings.ReplaceAll(strings.Trim(route, "/"), "/", ".")
+		name := strings.ReplaceAll(strings.Trim(k.route, "/"), "/", ".")
 		if name == "" {
 			name = "root"
 		}
-		fmt.Fprintf(&b, "requests.route.%s.status.%s=%d\n", name, status, m.routes[k])
+		fmt.Fprintf(&b, "requests.route.%s.status.%d=%d\n", name, k.status, m.routes[k])
 	}
 	return b.String()
 }

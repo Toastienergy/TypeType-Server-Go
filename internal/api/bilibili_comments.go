@@ -68,6 +68,10 @@ func (s *Server) bilibiliComments(ctx context.Context, raw, page string) (youtub
 		if !strings.HasPrefix(page, "bili1.") || err != nil || json.Unmarshal(b, &pg) != nil || pg.Aid <= 0 {
 			return out, &commentErr{http.StatusBadRequest, "Invalid page", ""}
 		}
+	} else if bilibili.IsLiveURL(raw) {
+		// PipePipe gives a live room the id LIVE and reports its comments disabled; the web app shows that state.
+		out.CommentsDisabled = true
+		return out, nil
 	} else {
 		bv := bilibili.BVID(raw)
 		if bv == "" {

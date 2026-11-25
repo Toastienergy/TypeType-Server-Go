@@ -2,7 +2,6 @@ package sabr
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/tls"
@@ -154,8 +153,9 @@ func (s *Session) run(ctx context.Context) {
 			}
 			continue
 		}
+		hedge := rn < 2
 		if s.seekPending {
-			cookie, s.seekPending = nil, false
+			cookie, s.seekPending, hedge = nil, false, true
 		}
 		in := s.info
 		inited := [2]bool{s.tracks[videoTrack].inited, s.tracks[audioTrack].inited}
@@ -164,7 +164,7 @@ func (s *Session) run(ctx context.Context) {
 		s.abortRequest = cancel
 		s.mu.Unlock()
 
-		res := s.round(reqCtx, in, body, nonce, rn, &cookie)
+		res := s.round(reqCtx, in, body, nonce, rn, &cookie, hedge)
 		rn++
 		s.requests.Store(int64(rn))
 		cancel()
@@ -210,31 +210,40 @@ func (s *Session) run(ctx context.Context) {
 }
 
 // round sends one SABR request and stores what comes back. A cancelled request (seek) is not an error.
-func (s *Session) round(ctx context.Context, in *Info, body []byte, nonce string, rn int, cookie *[]byte) roundResult {
+func (s *Session) round(ctx context.Context, in *Info, body []byte, nonce string, rn int, cookie *[]byte, hedge bool) roundResult {
 	var out roundResult
-	sep := "?"
-	if strings.Contains(in.BaseURL, "?") {
-		sep = "&"
-	}
-	req, _ := http.NewRequestWithContext(ctx, "POST", in.BaseURL+sep+"alr=yes&cpn="+nonce+"&rn="+strconv.Itoa(rn), bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/x-protobuf")
-	req.Header.Set("Accept", "application/vnd.yt-ump")
-	req.Header.Set("User-Agent", in.UserAgent)
+	trace := func(c context.Context) context.Context { return c }
+	var timing *RoundTiming
 	if rn < 2 {
 		t := &RoundTiming{Round: rn}
+		timing = t
 		began := time.Now()
 		since := func() int64 { return time.Since(began).Milliseconds() }
-		req = req.WithContext(httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{
-			GotConn:              func(i httptrace.GotConnInfo) { t.Reused, t.ConnMs = i.Reused, since() },
-			TLSHandshakeDone:     func(tls.ConnectionState, error) { t.TLSMs = since() },
-			GotFirstResponseByte: func() { t.FirstByteMs = since() },
-		}))
+		trace = func(c context.Context) context.Context {
+			return httptrace.WithClientTrace(c, &httptrace.ClientTrace{
+				GotConn:              func(i httptrace.GotConnInfo) { t.Reused, t.ConnMs = i.Reused, since() },
+				TLSHandshakeDone:     func(tls.ConnectionState, error) { t.TLSMs = since() },
+				GotFirstResponseByte: func() { t.FirstByteMs = since() },
+			})
+		}
 		defer func() {
 			t.DoneMs, t.Media, t.BackoffMs, t.Reload = since(), out.media, out.backoff.Milliseconds(), out.reload != ""
 			s.firstRoundDone(t)
 		}()
 	}
-	resp, err := s.store.media.Do(req)
+	r := s.send(ctx, in, "alr=yes&cpn="+nonce+"&rn="+strconv.Itoa(rn), body, hedge, trace)
+	defer r.cancel()
+	if r.fallback && r.ok() {
+		if timing != nil {
+			timing.Fallback = true
+		}
+		s.mu.Lock()
+		next := *s.info
+		next.BaseURL = r.base
+		s.info = &next
+		s.mu.Unlock()
+	}
+	resp, err := r.resp, r.err
 	if err != nil {
 		if ctx.Err() == nil {
 			out.fatal, out.failKind = "googlevideo: "+err.Error(), FailUpstreamTimeout
@@ -245,7 +254,7 @@ func (s *Session) round(ctx context.Context, in *Info, body []byte, nonce string
 	switch {
 	case resp.StatusCode == http.StatusForbidden:
 		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 160))
-		out.fatal, out.failKind = "googlevideo HTTP 403 from "+req.URL.Hostname()+": "+strings.TrimSpace(string(snippet)), FailUpstreamRefused
+		out.fatal, out.failKind = "googlevideo HTTP 403 from "+resp.Request.URL.Hostname()+": "+strings.TrimSpace(string(snippet)), FailUpstreamRefused
 		return out
 	case resp.StatusCode != http.StatusOK:
 		out.fatal, out.failKind = fmt.Sprintf("googlevideo HTTP %d", resp.StatusCode), FailUnknown

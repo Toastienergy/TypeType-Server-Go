@@ -83,7 +83,7 @@ func New(cfg *config.Config, db *pgxpool.Pool, c *cache.Cache, log *slog.Logger)
 		}}
 	srv.Sabr.SetOnFirstRound(func(videoID string, t sabr.RoundTiming) {
 		log.Info("sabr_first_round", "videoId", videoID, "round", t.Round, "reused", t.Reused, "connMs", t.ConnMs, "tlsMs", t.TLSMs, "firstByteMs", t.FirstByteMs,
-			"doneMs", t.DoneMs, "media", t.Media, "backoffMs", t.BackoffMs, "reload", t.Reload)
+			"doneMs", t.DoneMs, "media", t.Media, "backoffMs", t.BackoffMs, "reload", t.Reload, "fallback", t.Fallback)
 	})
 	srv.feeds = newFeeds(srv)
 	srv.warm = newWarmup(srv)

@@ -424,9 +424,10 @@ func (s *Session) Stats() Stats {
 
 // RoundTiming is how the first request to googlevideo spent its time, in milliseconds from its start: the connection
 // (reused or opened through the proxy), the TLS handshake, the first response byte and the end of the response, with
-// the media parts it carried, the backoff YouTube asked for and whether it asked for a reload.
+// the media parts it carried, the backoff YouTube asked for, whether it asked for a reload and whether the fallback
+// server answered first.
 type RoundTiming struct {
-	Reused, Reload                                bool
+	Reused, Reload, Fallback                      bool
 	ConnMs, TLSMs, FirstByteMs, DoneMs, BackoffMs int64
 	Media, Round                                  int
 }

@@ -10,6 +10,7 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -355,9 +356,7 @@ func (s *Session) readUMP(r *bufio.Reader, in *Info, cookie *[]byte, out *roundR
 			n := size - 1
 			buf := p.seg.data
 			if cap(buf)-len(buf) < n {
-				grown := make([]byte, len(buf), len(buf)+n)
-				copy(grown, buf)
-				buf = grown
+				buf = slices.Grow(buf, n)
 			}
 			if _, err := io.ReadFull(r, buf[len(buf):len(buf)+n]); err != nil {
 				return err
@@ -394,7 +393,9 @@ func (s *Session) readUMP(r *bufio.Reader, in *Info, cookie *[]byte, out *roundR
 				p.skip = old != nil && old.done
 			}
 			s.mu.Unlock()
-			p.seg = &Segment{Seq: h.seq, StartMs: h.startMs, DurMs: h.durMs, data: make([]byte, 0, max(h.contentLength, 0))}
+			if !p.skip {
+				p.seg = &Segment{Seq: h.seq, StartMs: h.startMs, DurMs: h.durMs, data: make([]byte, 0, max(h.contentLength, 0))}
+			}
 			parts[h.id] = p
 		case 22:
 			if len(data) == 0 {

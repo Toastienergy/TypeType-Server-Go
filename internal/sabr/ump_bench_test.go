@@ -54,18 +54,27 @@ func umpStream(segments int) ([]byte, int) {
 
 func BenchmarkReadUMP(b *testing.B) {
 	stream, parts := umpStream(24)
-	b.SetBytes(int64(len(stream)))
-	b.ReportAllocs()
-	br := bufio.NewReaderSize(bytes.NewReader(nil), 64<<10)
-	for b.Loop() {
-		s := &Session{changed: make(chan struct{}), info: &Info{}}
-		s.tracks[audioTrack] = newTrack(&Format{Itag: 140})
-		br.Reset(bytes.NewReader(stream))
-		var cookie []byte
-		var out roundResult
-		if err := s.readUMP(br, s.info, &cookie, &out); err != nil {
-			b.Fatal(err)
-		}
+	for _, resent := range []bool{false, true} {
+		b.Run(map[bool]string{false: "fresh", true: "resent"}[resent], func(b *testing.B) {
+			b.SetBytes(int64(len(stream)))
+			b.ReportAllocs()
+			br := bufio.NewReaderSize(bytes.NewReader(nil), 64<<10)
+			for b.Loop() {
+				s := &Session{changed: make(chan struct{}), info: &Info{}}
+				s.tracks[audioTrack] = newTrack(&Format{Itag: 140})
+				if resent {
+					for seq := 1; seq <= 24; seq++ {
+						s.tracks[audioTrack].segs[seq] = &Segment{Seq: seq, done: true}
+					}
+				}
+				br.Reset(bytes.NewReader(stream))
+				var cookie []byte
+				var out roundResult
+				if err := s.readUMP(br, s.info, &cookie, &out); err != nil {
+					b.Fatal(err)
+				}
+			}
+			b.ReportMetric(float64(parts), "parts/op")
+		})
 	}
-	b.ReportMetric(float64(parts), "parts/op")
 }

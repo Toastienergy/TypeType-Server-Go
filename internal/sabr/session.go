@@ -116,6 +116,7 @@ type Session struct {
 	released     bool
 	readyOnce    bool
 	requests     atomic.Int64
+	firstRound   atomic.Pointer[RoundTiming]
 	protection   atomic.Int32
 }
 
@@ -403,4 +404,35 @@ func (s *Session) Stats() Stats {
 	}
 	st.ReaderHead, st.ReaderTail = max(head, s.playerMs), max(tail, 0)
 	return st
+}
+
+// RoundTiming is how the first request to googlevideo spent its time, in milliseconds from its start: the connection
+// (reused or opened through the proxy), the TLS handshake, the first response byte and the end of the response, with
+// the media parts it carried, the backoff YouTube asked for and whether it asked for a reload.
+type RoundTiming struct {
+	Reused, Reload                                bool
+	ConnMs, TLSMs, FirstByteMs, DoneMs, BackoffMs int64
+	Media, Round                                  int
+}
+
+// FirstRound is the timing of the session's first request, nil until it ends.
+func (s *Session) FirstRound() *RoundTiming { return s.firstRound.Load() }
+
+// SetOnFirstRound registers what runs when a session's first request to googlevideo ends.
+func (st *Store) SetOnFirstRound(f func(videoID string, t RoundTiming)) {
+	st.mu.Lock()
+	st.onRound = f
+	st.mu.Unlock()
+}
+
+func (s *Session) firstRoundDone(t *RoundTiming) {
+	if t.Round == 0 {
+		s.firstRound.Store(t)
+	}
+	s.store.mu.Lock()
+	f := s.store.onRound
+	s.store.mu.Unlock()
+	if f != nil {
+		f(s.VideoID, *t)
+	}
 }

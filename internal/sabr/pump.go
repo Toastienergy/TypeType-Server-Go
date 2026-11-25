@@ -5,11 +5,13 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
 	"math"
 	"net/http"
+	"net/http/httptrace"
 	"strconv"
 	"strings"
 	"time"
@@ -217,6 +219,20 @@ func (s *Session) round(ctx context.Context, in *Info, body []byte, nonce string
 	req.Header.Set("Content-Type", "application/x-protobuf")
 	req.Header.Set("Accept", "application/vnd.yt-ump")
 	req.Header.Set("User-Agent", in.UserAgent)
+	if rn < 2 {
+		t := &RoundTiming{Round: rn}
+		began := time.Now()
+		since := func() int64 { return time.Since(began).Milliseconds() }
+		req = req.WithContext(httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{
+			GotConn:              func(i httptrace.GotConnInfo) { t.Reused, t.ConnMs = i.Reused, since() },
+			TLSHandshakeDone:     func(tls.ConnectionState, error) { t.TLSMs = since() },
+			GotFirstResponseByte: func() { t.FirstByteMs = since() },
+		}))
+		defer func() {
+			t.DoneMs, t.Media, t.BackoffMs, t.Reload = since(), out.media, out.backoff.Milliseconds(), out.reload != ""
+			s.firstRoundDone(t)
+		}()
+	}
 	resp, err := s.store.media.Do(req)
 	if err != nil {
 		if ctx.Err() == nil {

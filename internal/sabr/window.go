@@ -82,7 +82,8 @@ func bufferedEnd(req *WindowRequest, itag int, start int64) int64 {
 }
 
 // BuildWindow lists, per track, the finished segments from what the client already buffered up to its buffer
-// goal, and says whether at least the next second plays. Callers hold no lock.
+// goal, then the one still arriving after them, which the client reads as it comes; it says whether at least the
+// next second plays. Callers hold no lock.
 func (s *Session) BuildWindow(req *WindowRequest) Window {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -101,6 +102,12 @@ func (s *Session) BuildWindow(req *WindowRequest) Window {
 		}
 		seg := t.covering(target)
 		if seg == nil {
+			if lv := t.liveCovering(target); lv != nil {
+				out.track.Segments = append(out.track.Segments, WindowSegment{
+					URL: base + "/" + strconv.Itoa(t.f.Itag) + "/segment/" + strconv.Itoa(lv.Seq) + genQ, StartMs: lv.StartMs, DurationMs: lv.DurMs})
+				out.coveredEnd = lv.EndMs()
+				return out
+			}
 			out.blockedBy = trackName(t) + ":" + strconv.Itoa(t.f.Itag) + " pending"
 			out.blockedAt = target
 			return out
@@ -109,6 +116,12 @@ func (s *Session) BuildWindow(req *WindowRequest) Window {
 		for len(out.track.Segments) < maxSegmentsPerTrack {
 			sg := t.segs[seq]
 			if sg == nil || !sg.done {
+				if lv := t.live[seq]; lv != nil {
+					out.track.Segments = append(out.track.Segments, WindowSegment{
+						URL: base + "/" + strconv.Itoa(t.f.Itag) + "/segment/" + strconv.Itoa(seq) + genQ, StartMs: lv.StartMs, DurationMs: lv.DurMs})
+					out.coveredEnd = lv.EndMs()
+					break
+				}
 				out.blockedBy = trackName(t) + ":" + strconv.Itoa(t.f.Itag) + ":" + strconv.Itoa(seq) + " pending"
 				out.blockedAt = out.coveredEnd
 				break

@@ -38,6 +38,7 @@ type pending struct {
 	seg  *Segment
 	init bool
 	skip bool
+	live bool
 }
 
 type roundResult struct {
@@ -342,6 +343,14 @@ func parseHeader(data []byte) mediaHeader {
 func (s *Session) readUMP(r *bufio.Reader, in *Info, cookie *[]byte, out *roundResult) error {
 	parts := map[int]*pending{}
 	defer func() {
+		s.mu.Lock()
+		for _, p := range parts {
+			if p != nil && p.live {
+				s.loseLocked(p.t, p.seg)
+			}
+		}
+		s.notify()
+		s.mu.Unlock()
 		for _, p := range parts {
 			if p != nil && p.seg != nil {
 				p.seg.Release()
@@ -376,12 +385,25 @@ func (s *Session) readUMP(r *bufio.Reader, in *Info, cookie *[]byte, out *roundR
 				continue
 			}
 			n := size - 1
+			if p.live {
+				s.mu.Lock()
+			}
 			p.seg.grow(n)
 			buf := p.seg.data
+			if p.live {
+				s.mu.Unlock()
+			}
 			if _, err := io.ReadFull(r, buf[len(buf):len(buf)+n]); err != nil {
 				return err
 			}
+			if !p.live {
+				p.seg.data = buf[:len(buf)+n]
+				continue
+			}
+			s.mu.Lock()
 			p.seg.data = buf[:len(buf)+n]
+			s.notify()
+			s.mu.Unlock()
 			continue
 		}
 		if cap(scratch) < size {
@@ -419,8 +441,15 @@ func (s *Session) readUMP(r *bufio.Reader, in *Info, cookie *[]byte, out *roundR
 				p.seg = newInitSegment(max(h.contentLength, 0))
 			default:
 				p.seg = newSegment(h.seq, h.startMs, h.durMs, max(h.contentLength, 0))
+				p.live = s.goLive(p.t, p.seg)
 			}
 			if old := parts[h.id]; old != nil && old.seg != nil {
+				if old.live {
+					s.mu.Lock()
+					s.loseLocked(old.t, old.seg)
+					s.notify()
+					s.mu.Unlock()
+				}
 				old.seg.Release()
 			}
 			parts[h.id] = p
@@ -438,6 +467,9 @@ func (s *Session) readUMP(r *bufio.Reader, in *Info, cookie *[]byte, out *roundR
 				continue
 			}
 			s.mu.Lock()
+			if p.live {
+				s.endLiveLocked(p.t, p.seg)
+			}
 			if p.init {
 				if !p.t.inited {
 					p.t.init, p.t.inited = p.seg.data, true

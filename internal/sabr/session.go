@@ -17,6 +17,7 @@ type Segment struct {
 	DurMs   int64
 	data    []byte
 	done    bool
+	lost    bool
 	heap    bool
 	refs    atomic.Int32
 	cleanup runtime.Cleanup
@@ -31,11 +32,14 @@ type track struct {
 	init   []byte
 	inited bool
 	segs   map[int]*Segment
+	live   map[int]*Segment
 	endSeq int
 	bytes  int64
 }
 
-func newTrack(f *Format) *track { return &track{f: f, segs: map[int]*Segment{}} }
+func newTrack(f *Format) *track {
+	return &track{f: f, segs: map[int]*Segment{}, live: map[int]*Segment{}}
+}
 
 // boundaryMs absorbs the rounding of segment times to whole milliseconds: one segment may end a millisecond or
 // two before the next one starts, and a client resuming at the first end must land on the next.
@@ -275,6 +279,11 @@ func (s *Session) trackFor(itag int) *track {
 
 // Media waits for segment seq of itag; when it is not cached it asks the pump for the time it should play at.
 func (s *Session) Media(ctx context.Context, itag, seq int, timeout time.Duration) (*Segment, bool) {
+	seg, _, ok := s.media(ctx, itag, seq, timeout, false)
+	return seg, ok
+}
+
+func (s *Session) media(ctx context.Context, itag, seq int, timeout time.Duration, orLive bool) (*Segment, bool, bool) {
 	deadline := time.NewTimer(timeout)
 	defer deadline.Stop()
 	asked := false
@@ -283,13 +292,19 @@ func (s *Session) Media(ctx context.Context, itag, seq int, timeout time.Duratio
 		t := s.trackFor(itag)
 		if t == nil {
 			s.mu.Unlock()
-			return nil, false
+			return nil, false, false
 		}
 		if seg := t.segs[seq]; seg != nil && seg.done {
 			seg.retain()
 			s.touch()
 			s.mu.Unlock()
-			return seg, true
+			return seg, false, true
+		}
+		if seg := t.live[seq]; orLive && seg != nil {
+			seg.retain()
+			s.touch()
+			s.mu.Unlock()
+			return seg, true, true
 		}
 		if !asked {
 			asked = true
@@ -301,15 +316,15 @@ func (s *Session) Media(ctx context.Context, itag, seq int, timeout time.Duratio
 		failed := s.failKind != ""
 		s.mu.Unlock()
 		if failed {
-			return nil, false
+			return nil, false, false
 		}
 		s.poke()
 		select {
 		case <-ch:
 		case <-deadline.C:
-			return nil, false
+			return nil, false, false
 		case <-ctx.Done():
-			return nil, false
+			return nil, false, false
 		}
 	}
 }

@@ -75,6 +75,9 @@ func (s *Session) dropMediaLocked() {
 			delete(t.segs, k)
 			sg.Release()
 		}
+		for _, sg := range t.live {
+			s.loseLocked(t, sg)
+		}
 		t.bytes = 0
 	}
 	s.bytes = 0

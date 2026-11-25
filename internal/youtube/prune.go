@@ -15,7 +15,9 @@ var channelSkip = map[string]bool{
 	"menuButton": true, "themedPalette": true, "thumbnailHoverOverlayToggleActionsViewModel": true,
 	"signalServiceEndpoint": true, "videoCommand": true, "clickTrackingParams": true, "trackingParams": true,
 	"watchEndpointSupportedOnesieConfig": true, "loggingContext": true, "loggingDirectives": true, "topbar": true,
-	"accessibilityContext": true, "frameworkUpdates": true,
+	"accessibilityContext": true, "frameworkUpdates": true, "animatedThumbnailOverlayViewModel": true, "lottieData": true,
+	"animationActivationEntitySelectorType": true, "animationActivationEntityKey": true,
+	"animationActivationTargetId": true, "webResponseContextExtensionData": true,
 }
 
 // nextSkip is channelSkip for a watch page's next answer (about 780 KB), plus its description panel copy, end
@@ -27,6 +29,10 @@ var nextSkip = map[string]bool{
 	"watchEndpointSupportedOnesieConfig": true, "loggingContext": true, "loggingDirectives": true, "topbar": true,
 	"accessibilityContext": true, "structuredDescriptionContentRenderer": true, "showSheetCommand": true,
 	"playerOverlays": true, "merchandiseShelfRenderer": true, "interstitial": true, "languageList": true,
+	"animatedThumbnailOverlayViewModel": true, "lottieData": true, "animationActivationEntitySelectorType": true,
+	"animationActivationEntityKey": true, "animationActivationTargetId": true, "webResponseContextExtensionData": true,
+	"styleRuns": true, "repeatButton": true, "shareButton": true, "dislikeButtonViewModel": true, "headerMapping": true,
+	"macroMarkersListEntity": true, "modalEndpoint": true,
 }
 
 // decoders keep their read buffer between answers; duplicate member names are allowed, as encoding/json does

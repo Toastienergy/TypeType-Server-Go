@@ -37,3 +37,5 @@ func mediaFree(b []byte) {
 	C.free(unsafe.Pointer(unsafe.SliceData(b[:1])))
 	mappedBytes.Add(-int64(cap(b)))
 }
+
+func trimSpare(int) {}

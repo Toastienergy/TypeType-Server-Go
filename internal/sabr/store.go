@@ -172,6 +172,7 @@ func (st *Store) sweep() {
 			}
 		}
 		st.mu.Unlock()
+		trimSpare(len(all))
 		var total int64
 		for _, s := range all {
 			if time.Since(lastUsed(s)) > st.idle {

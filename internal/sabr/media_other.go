@@ -11,3 +11,5 @@ var mappedBytes atomic.Int64
 func mediaAlloc(n int) []byte { return make([]byte, 0, n) }
 
 func mediaFree([]byte) {}
+
+func trimSpare(int) {}

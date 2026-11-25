@@ -8,6 +8,8 @@ when:
   - event: push
     branch: [dev, beta, main]
   - event: pull_request
+  - event: tag
+    ref: refs/tags/v*
   - event: manual
 
 services:

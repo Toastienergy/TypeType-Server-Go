@@ -232,6 +232,10 @@ func pathOK(w http.ResponseWriter, r *http.Request, name string, re *regexp.Rege
 	return v, true
 }
 
+// twitchStreamListParams are what the lists of lives pass on to the live service: the page, and the language filter
+// the live service checks itself, answering 400 for one it refuses.
+var twitchStreamListParams = []string{"first", "after", "language"}
+
 func pickQuery(r *http.Request, names ...string) url.Values {
 	out := url.Values{}
 	for _, n := range names {
@@ -280,10 +284,10 @@ func (s *Server) twitchRoutes(rt *Router) {
 		}
 	}
 	page := []string{"first", "after"}
-	rt.Handle("GET", "/twitch/streams", relay(static("/v1/streams"), page, false))
+	rt.Handle("GET", "/twitch/streams", relay(static("/v1/streams"), twitchStreamListParams, false))
 	rt.Handle("GET", "/twitch/games", relay(static("/v1/games"), page, false))
-	rt.Handle("GET", "/twitch/games/{slug}/streams", relay(param("slug", twitchSlugRe, "/v1/games/{}/streams"), page, false))
-	rt.Handle("GET", "/twitch/tags/{tag}/streams", relay(param("tag", twitchTagRe, "/v1/tags/{}/streams"), page, false))
+	rt.Handle("GET", "/twitch/games/{slug}/streams", relay(param("slug", twitchSlugRe, "/v1/games/{}/streams"), twitchStreamListParams, false))
+	rt.Handle("GET", "/twitch/tags/{tag}/streams", relay(param("tag", twitchTagRe, "/v1/tags/{}/streams"), twitchStreamListParams, false))
 	rt.Handle("GET", "/twitch/channels/{login}", relay(param("login", twitchLoginRe, "/v1/channels/{}"), nil, false))
 	rt.Handle("GET", "/twitch/channels/{login}/videos", relay(param("login", twitchLoginRe, "/v1/channels/{}/videos"), page, false))
 	rt.Handle("GET", "/twitch/channels/{login}/clips", relay(param("login", twitchLoginRe, "/v1/channels/{}/clips"), page, false))

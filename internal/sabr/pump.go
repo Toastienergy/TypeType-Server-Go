@@ -404,6 +404,9 @@ func (s *Session) readUMP(r *bufio.Reader, in *Info, cookie *[]byte, out *roundR
 			default:
 				p.seg = newSegment(h.seq, h.startMs, h.durMs, max(h.contentLength, 0))
 			}
+			if old := parts[h.id]; old != nil && old.seg != nil {
+				old.seg.Release()
+			}
 			parts[h.id] = p
 		case 22:
 			if len(data) == 0 {

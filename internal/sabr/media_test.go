@@ -81,3 +81,27 @@ func TestDroppedSegmentIsUnmappedByItsCleanup(t *testing.T) {
 		t.Fatalf("%d bytes still mapped after the segment became unreachable", got)
 	}
 }
+
+func TestRestartedPartReleasesTheUnfinishedSegment(t *testing.T) {
+	base := mappedBytes.Load()
+	var b bytes.Buffer
+	var h pw
+	h.varint(1, 7)
+	h.varint(3, 140)
+	h.varint(9, 1)
+	h.varint(11, 0)
+	h.varint(12, 10000)
+	h.varint(14, 128<<10)
+	umpPart(&b, 20, h.b)
+	umpPart(&b, 21, append([]byte{7}, make([]byte, 16<<10)...))
+	umpPart(&b, 20, h.b)
+	s := mediaSession()
+	var cookie []byte
+	var out roundResult
+	if err := s.readUMP(bufio.NewReader(&b), s.info, &cookie, &out); err != nil {
+		t.Fatal(err)
+	}
+	if got := mappedBytes.Load() - base; got != 0 {
+		t.Fatalf("%d bytes still mapped for parts that never finished", got)
+	}
+}

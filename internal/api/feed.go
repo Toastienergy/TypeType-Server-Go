@@ -382,38 +382,50 @@ func (s *Server) subscriptionFeed(w http.ResponseWriter, r *http.Request, user s
 		return
 	}
 	focus := s.focusFor(r.Context(), user)
-	var picked []youtube.VideoItem
 	canon := map[string]string{}
-	for _, v := range snap.videos {
+	videos, more := feedPage(snap.videos, offset, limit, oldest, func(v *youtube.VideoItem) bool {
 		if st.HideSubscriptionLiveStreams && (v.IsLive || v.IsLiveContent && v.Duration < 0) || st.HideMembersOnlyContent && v.RequiresMembership {
-			continue
+			return false
 		}
-		if allowed != nil && !anyIn(snap.sources[feedKey(v)], allowed, canon) {
-			continue
+		if allowed != nil && !anyIn(snap.sources[feedKey(*v)], allowed, canon) {
+			return false
 		}
-		if blocked(v) || focus != nil && !focus.keepsFeedVideo(v) {
-			continue
-		}
-		picked = append(picked, v)
-	}
-	if oldest {
-		for i, j := 0, len(picked)-1; i < j; i, j = i+1, j-1 {
-			picked[i], picked[j] = picked[j], picked[i]
-		}
-	}
-	end := min(offset+limit, len(picked))
-	videos := []youtube.VideoItem{}
-	if offset < len(picked) {
-		videos = picked[offset:end]
-	}
+		return !blocked(*v) && (focus == nil || focus.keepsFeedVideo(*v))
+	})
 	var next *string
-	if end < len(picked) {
+	if more {
+		end := offset + len(videos)
 		b, _ := json.Marshal(feedCursor{snap.generation, end, limit, st.HideSubscriptionLiveStreams, st.HideMembersOnlyContent, selKey, oldest})
 		n := base64.RawURLEncoding.EncodeToString(b)
 		next = &n
 	}
 	gen, at := snap.generation, snap.generatedAt
 	httpx.JSON(w, http.StatusOK, map[string]any{"videos": videos, "nextpage": next, "generation": gen, "generatedAt": at, "refreshing": building})
+}
+
+// feedPage walks the feed in the asked order and stops one kept video past the page, which is enough to know a next
+// page exists: the filters run on the first page's worth of videos instead of the whole feed, and only the page is
+// copied out.
+func feedPage(all []youtube.VideoItem, offset, limit int, oldest bool, keep func(*youtube.VideoItem) bool) ([]youtube.VideoItem, bool) {
+	videos := []youtube.VideoItem{}
+	kept := 0
+	for k := range all {
+		i := k
+		if oldest {
+			i = len(all) - 1 - k
+		}
+		if !keep(&all[i]) {
+			continue
+		}
+		if kept >= offset+limit {
+			return videos, true
+		}
+		if kept >= offset {
+			videos = append(videos, all[i])
+		}
+		kept++
+	}
+	return videos, false
 }
 
 // anyIn reports whether one of the source URLs is allowed. canon remembers each source's canonical form for the

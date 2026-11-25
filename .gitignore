@@ -1,2 +1,5 @@
 bin/
 state/
+*.test
+REPORT.md
+NOTES.md

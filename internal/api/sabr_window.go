@@ -300,11 +300,24 @@ func (s *Server) sabrMedia(isInit bool) http.HandlerFunc {
 }
 
 // writeMedia serves cached bytes as they are, with single byte ranges, never buffered or copied.
+// Shared one-value header slices for the segment route, the most frequent request during playback: Header.Set
+// allocates a slice per call, and nothing writes into these.
+var (
+	noStoreValue    = []string{"no-store"}
+	byteRangesValue = []string{"bytes"}
+	mediaTypes      = map[string][]string{"video/mp4": {"video/mp4"}, "audio/mp4": {"audio/mp4"},
+		"video/webm": {"video/webm"}, "audio/webm": {"audio/webm"}}
+)
+
 func writeMedia(w http.ResponseWriter, r *http.Request, mime string, data []byte) {
 	h := w.Header()
-	h.Set("Cache-Control", "no-store")
-	h.Set("Accept-Ranges", "bytes")
-	h.Set("Content-Type", mime)
+	h["Cache-Control"] = noStoreValue
+	h["Accept-Ranges"] = byteRangesValue
+	if v, ok := mediaTypes[mime]; ok {
+		h["Content-Type"] = v
+	} else {
+		h.Set("Content-Type", mime)
+	}
 	total := int64(len(data))
 	if rg := r.Header.Get("Range"); rg != "" {
 		first, last, ok := parseRange(rg, total)

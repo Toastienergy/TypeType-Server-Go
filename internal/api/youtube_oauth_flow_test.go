@@ -85,7 +85,7 @@ func TestOAuthDevicePlaybackFlow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer pool.Close()
+	t.Cleanup(pool.Close)
 	var refreshes atomic.Int32
 	var bearer atomic.Value
 	fake := fakeTV(t, &refreshes, &bearer)

@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"typetype.dev/server/internal/httpx"
 	"typetype.dev/server/internal/sabr"
@@ -170,7 +171,9 @@ func (s *Server) youtubeBootstrap(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), sabrInfoTimeout)
 	defer cancel()
+	began := time.Now()
 	in, err := s.Sabr.Token().Info(ctx, id)
+	s.sabrTrace(r, "stream_bootstrap", nil, "videoId", id, "infoMs", time.Since(began).Milliseconds(), "ok", err == nil)
 	if needsSignedIn(id, err) {
 		if user := s.optionalUserID(r); s.hasYoutubeSession(ctx, user) {
 			in, _, err = s.signedInSabr(ctx, user, id)

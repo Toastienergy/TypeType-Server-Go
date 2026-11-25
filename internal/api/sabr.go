@@ -179,23 +179,29 @@ func (s *Server) sabrCreate(w http.ResponseWriter, r *http.Request) {
 	start := p.start()
 	key := prewarmKey(user, videoID, p, start)
 	isPrewarm := r.URL.Query().Get("prewarm") == "true"
+	asked := time.Now()
+	reuse := func(ss *sabr.Session, at int64, how string) {
+		ready := s.awaitReady(r.Context(), ss, at, deref(p.AudioOnly))
+		s.sabrTrace(r, "sabr_create", ss, "outcome", how, "prewarm", isPrewarm, "user", userKind(user), "videoItag", ss.Video.Itag,
+			"audioItag", ss.Audio.Itag, "startMs", at, "waitMs", time.Since(asked).Milliseconds(), "ready", ready)
+		s.respondPrepared(w, r, ss, at, ready)
+	}
+	// A card prepares the session on hover through the bootstrap; the prewarm its click sends then joins that
+	// session instead of opening the video a second time at YouTube.
 	if isPrewarm {
-		// A card prepares the session on hover through the bootstrap; the prewarm its click sends then joins that
-		// session instead of opening the video a second time at YouTube.
 		if ss, at := s.Sabr.PeekPrewarmed(key); ss != nil {
 			if kind, _ := ss.Failure(); kind == "" {
-				s.respondPrepared(w, r, ss, at, s.awaitReady(r.Context(), ss, at, deref(p.AudioOnly)))
+				reuse(ss, at, "joined_prepared")
 				return
 			}
 		}
-	} else {
-		if ss, at := s.Sabr.TakePrewarmed(key); ss != nil {
-			if kind, _ := ss.Failure(); kind == "" {
-				s.respondPrepared(w, r, ss, at, s.awaitReady(r.Context(), ss, at, deref(p.AudioOnly)))
-				return
-			}
+	} else if ss, at := s.Sabr.TakePrewarmed(key); ss != nil {
+		if kind, _ := ss.Failure(); kind == "" {
+			reuse(ss, at, "took_prepared")
+			return
 		}
 	}
+	miss := prewarmMiss(key, s.Sabr.PrewarmedFor(user, videoID))
 	began := time.Now()
 	ctx, cancel := context.WithTimeout(r.Context(), sabrInfoTimeout)
 	info, err := s.Sabr.Token().Info(ctx, videoID)
@@ -235,8 +241,9 @@ func (s *Server) sabrCreate(w http.ResponseWriter, r *http.Request) {
 		s.Sabr.Remember(key, ss, start)
 	}
 	ready := s.awaitReady(r.Context(), ss, start, deref(p.AudioOnly))
-	s.Log.Info("sabr_create", "videoId", videoID, "prewarm", isPrewarm, "infoMs", infoAt.Milliseconds(), "initMs", initAt.Milliseconds(),
-		"readyMs", time.Since(began).Milliseconds(), "ready", ready, "requests", ss.Requests())
+	s.sabrTrace(r, "sabr_create", ss, "outcome", "created", "prewarm", isPrewarm, "user", userKind(user), "videoItag", video.Itag,
+		"audioItag", audio.Itag, "startMs", start, "audioOnly", deref(p.AudioOnly), "missed", miss, "infoMs", infoAt.Milliseconds(),
+		"initMs", initAt.Milliseconds(), "readyMs", time.Since(began).Milliseconds(), "ready", ready, "requests", ss.Requests())
 	s.respondPrepared(w, r, ss, start, ready)
 }
 

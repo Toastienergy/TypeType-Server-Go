@@ -109,6 +109,7 @@ type Session struct {
 	failKind     string
 	failMsg      string
 	lastUsed     time.Time
+	born         time.Time
 	cancel       context.CancelFunc
 	abortRequest context.CancelFunc
 	wake         chan struct{}
@@ -436,3 +437,6 @@ func (s *Session) firstRoundDone(t *RoundTiming) {
 		f(s.VideoID, *t)
 	}
 }
+
+// Age is how long ago the session was created.
+func (s *Session) Age() time.Duration { return time.Since(s.born) }

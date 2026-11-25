@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 )
@@ -75,7 +76,7 @@ func (st *Store) Create(info *Info, videoID, userID string, video, audio *Format
 	ctx, cancel := context.WithCancel(context.Background())
 	s := &Session{ID: newID(), VideoID: videoID, UserID: userID, Video: video, Audio: audio, AudioOnly: audioOnly,
 		store: st, info: info, gen: gen, playerMs: max(0, startMs), changed: make(chan struct{}), wake: make(chan struct{}, 1),
-		cancel: cancel, lastUsed: time.Now()}
+		cancel: cancel, lastUsed: time.Now(), born: time.Now()}
 	s.tracks[videoTrack], s.tracks[audioTrack] = newTrack(video), newTrack(audio)
 	st.mu.Lock()
 	st.sessions[s.ID] = s
@@ -120,6 +121,19 @@ func (st *Store) HasPrewarmed(key string) bool {
 	defer st.mu.Unlock()
 	_, ok := st.prewarm[key]
 	return ok
+}
+
+// PrewarmedFor lists the keys prewarmed for a user's video, to tell why a create found none of them.
+func (st *Store) PrewarmedFor(user, video string) []string {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	var keys []string
+	for k := range st.prewarm {
+		if strings.HasPrefix(k, user+"|"+video+"|") {
+			keys = append(keys, k)
+		}
+	}
+	return keys
 }
 
 // PeekPrewarmed is the prewarmed session waiting under key, left waiting for the create that takes it.

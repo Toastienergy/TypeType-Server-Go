@@ -52,9 +52,13 @@ func (s *Server) earlySession(r *http.Request, id string, in *sabr.Info) {
 	}
 	key := prewarmKey(user, id, p, start)
 	if s.Sabr.HasPrewarmed(key) {
+		s.sabrTrace(r, "sabr_early", nil, "videoId", id, "outcome", "already_prepared")
 		return
 	}
-	s.Sabr.Remember(key, s.Sabr.Create(in, id, owner, video, audio, start, false, 0), start)
+	ss := s.Sabr.Create(in, id, owner, video, audio, start, false, 0)
+	s.Sabr.Remember(key, ss, start)
+	s.sabrTrace(r, "sabr_early", ss, "outcome", "started", "user", userKind(user), "qualityLimit", limit, "videoItag", vi,
+		"audioItag", ai, "startMs", start)
 }
 
 func webCodecRank(mime string) int {

@@ -24,8 +24,10 @@ func (s *Server) youtubeStreamCore(ctx context.Context, id, raw string) (*stream
 	return publicCached(s, ctx, area, "stream:v6:"+raw, func(ctx context.Context) (*streamResponse, *extractFail) {
 		ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 		defer cancel()
+		began := time.Now()
 		infoc := make(chan *sabr.Info, 1)
 		var tokenDown bool
+		var infoMs, sponsorMs int64
 		go func() {
 			in, err := s.Sabr.Token().Info(ctx, id)
 			if err != nil {
@@ -33,11 +35,17 @@ func (s *Server) youtubeStreamCore(ctx context.Context, id, raw string) (*stream
 				var ne net.Error
 				tokenDown = errors.As(err, &ne) || errors.Is(err, syscall.ECONNREFUSED)
 			}
+			infoMs = time.Since(began).Milliseconds()
 			infoc <- in
 		}()
 		sbc := make(chan sponsorResult, 1)
-		go func() { sbc <- s.sponsor.segments(ctx, id) }()
+		go func() {
+			sb := s.sponsor.segments(ctx, id)
+			sponsorMs = time.Since(began).Milliseconds()
+			sbc <- sb
+		}()
 		watch, err := s.YT.FetchWatch(ctx, id)
+		watchMs := time.Since(began).Milliseconds()
 		s.rec.streamOpened(ctx, refusedByYoutube(err) || watch != nil && watch.Restriction != nil && watch.Restriction.Code == "provider_access_blocked")
 		in := <-infoc
 		if err != nil && in == nil {
@@ -52,6 +60,8 @@ func (s *Server) youtubeStreamCore(ctx context.Context, id, raw string) (*stream
 			resp.restriction = watch.Restriction
 		}
 		sb := <-sbc
+		s.Log.Info("stream_core", "videoId", id, "watchMs", watchMs, "infoMs", infoMs, "sponsorMs", sponsorMs,
+			"totalMs", time.Since(began).Milliseconds(), "watchOk", watch != nil, "infoOk", in != nil)
 		resp.SponsorBlockSegments, resp.SponsorBlockAvailable = sb.segments, sb.available
 		resp.tokenDown = tokenDown
 		return &resp, nil

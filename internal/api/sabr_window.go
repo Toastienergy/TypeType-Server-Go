@@ -111,12 +111,13 @@ func (s *Server) sabrWindow(action string) http.HandlerFunc {
 		if action != "segments" {
 			ss.SetPosition(req.Generation, req.PlayerTimeMs, req.AudioOnly)
 		}
+		asked := time.Now()
 		win := s.awaitWindow(r, ss, &req)
 		st := ss.Stats()
 		ready := win.Ready && st.FailKind == ""
-		if !ready {
-			s.Log.Info("sabr_window_pending", "videoId", ss.VideoID, "action", action, "playerMs", req.PlayerTimeMs,
-				"generation", req.Generation, "fail", st.FailKind)
+		if took := time.Since(asked); startupStep(ss, took, ready) {
+			s.sabrTrace(r, "sabr_window", ss, "action", action, "ready", ready, "waitMs", took.Milliseconds(), "playerMs", req.PlayerTimeMs,
+				"generation", req.Generation, "readerHeadMs", st.ReaderHead, "blockedBy", win.BlockedBy, "fail", st.FailKind)
 		}
 		if action == "prefetch" {
 			resp := s.pending(ss, &req, win, st, ready)
@@ -196,6 +197,10 @@ func (s *Server) sabrPosition(w http.ResponseWriter, r *http.Request) {
 	}
 	ss.SetPosition(req.Generation, req.PlayerTimeMs, req.AudioOnly)
 	st := ss.Stats()
+	if startupStep(ss, 0, true) {
+		s.sabrTrace(r, "sabr_window", ss, "action", "position", "playerMs", req.PlayerTimeMs, "generation", req.Generation,
+			"readerHeadMs", st.ReaderHead)
+	}
 	httpx.JSON(w, http.StatusOK, map[string]any{"sessionId": ss.ID, "generation": st.Generation, "playerTimeMs": st.PlayerMs,
 		"readerHeadMs": st.ReaderHead, "readerTailMs": st.ReaderTail, "bufferedEdgeMs": st.ReaderHead, "live": nil})
 }
@@ -271,6 +276,13 @@ func (s *Server) sabrMedia(isInit bool) http.HandlerFunc {
 		}
 		var data []byte
 		var ok bool
+		asked := time.Now()
+		defer func() {
+			if took := time.Since(asked); startupStep(ss, took, ok) {
+				s.sabrTrace(r, "sabr_media", ss, "itag", itag, "init", isInit, "seq", seq, "ok", ok, "bytes", len(data),
+					"waitMs", took.Milliseconds(), "generation", gen)
+			}
+		}()
 		if isInit {
 			data, ok = ss.Init(r.Context(), itag, max(wait, time.Millisecond))
 		} else {

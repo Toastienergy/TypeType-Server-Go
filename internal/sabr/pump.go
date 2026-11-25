@@ -62,11 +62,11 @@ type rangeSpec struct {
 	first, last int
 }
 
-func buildRequest(in *Info, video, audio *Format, inited [2]bool, ranges []rangeSpec, playerMs int64, cookie []byte, audioOnly bool, bandwidth int64) []byte {
+func buildRequest(in *Info, video, audio *Format, inited [2]bool, ranges []rangeSpec, playerMs int64, cookie []byte, audioOnly bool) []byte {
 	var st pw
 	st.varint(16, uint64(video.Height))
 	st.varint(21, uint64(video.Height))
-	st.varint(23, bandwidthEstimate(bandwidth, video, audio))
+	st.varint(23, uint64(video.Bitrate+audio.Bitrate)*2)
 	st.varint(28, uint64(playerMs))
 	st.varint(34, 1)
 	st.fixed32(35, math.Float32bits(1))
@@ -159,7 +159,7 @@ func (s *Session) run(ctx context.Context) {
 		}
 		in := s.info
 		inited := [2]bool{s.tracks[videoTrack].inited, s.tracks[audioTrack].inited}
-		body := buildRequest(in, s.Video, s.Audio, inited, ranges, reqMs, cookie, s.AudioOnly, s.bandwidth.Load())
+		body := buildRequest(in, s.Video, s.Audio, inited, ranges, reqMs, cookie, s.AudioOnly)
 		reqCtx, cancel := context.WithCancel(ctx)
 		s.abortRequest = cancel
 		s.mu.Unlock()
@@ -231,7 +231,6 @@ func (s *Session) round(ctx context.Context, in *Info, body []byte, nonce string
 			s.firstRoundDone(t)
 		}()
 	}
-	sentAt := time.Now()
 	r := s.send(ctx, in, "alr=yes&cpn="+nonce+"&rn="+strconv.Itoa(rn), body, hedge, trace)
 	defer r.cancel()
 	if r.fallback && r.ok() {
@@ -261,11 +260,7 @@ func (s *Session) round(ctx context.Context, in *Info, body []byte, nonce string
 		out.fatal, out.failKind = fmt.Sprintf("googlevideo HTTP %d", resp.StatusCode), FailUnknown
 		return out
 	}
-	counted := &countingReader{r: resp.Body}
-	err = s.readUMP(bufio.NewReaderSize(counted, 64<<10), in, cookie, &out)
-	if err == nil || errors.Is(err, io.ErrUnexpectedEOF) {
-		s.noteBandwidth(counted.n, time.Since(sentAt))
-	}
+	err = s.readUMP(bufio.NewReaderSize(resp.Body, 64<<10), in, cookie, &out)
 	if err != nil && ctx.Err() == nil && !errors.Is(err, io.ErrUnexpectedEOF) {
 		out.fatal, out.failKind = "googlevideo: "+err.Error(), FailUpstreamTimeout
 	}

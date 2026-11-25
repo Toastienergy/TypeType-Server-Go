@@ -122,7 +122,6 @@ type Session struct {
 	readyOnce    bool
 	requests     atomic.Int64
 	firstRound   atomic.Pointer[RoundTiming]
-	bandwidth    atomic.Int64
 	protection   atomic.Int32
 }
 

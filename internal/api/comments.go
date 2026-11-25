@@ -67,7 +67,7 @@ func (s *Server) comments(pageParam string) http.HandlerFunc {
 			plain(w, r, http.StatusBadRequest, "Missing 'repliesPage' parameter")
 			return
 		}
-		res, cerr := s.commentPage(r.Context(), raw, page)
+		res, cerr := s.cachedCommentPage(r.Context(), raw, page)
 		if cerr != nil {
 			cerr.write(w, r)
 			return
@@ -87,6 +87,36 @@ func (e *commentErr) write(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.Error(w, r, e.status, e.msg, e.code)
+}
+
+// cachedCommentPage is CachedCommentService: a page is kept for PublicCachePolicy.commentsTtl, ten minutes for a
+// next page, five for the first page of a Bilibili or NicoNico video and three for a YouTube one.
+func (s *Server) cachedCommentPage(ctx context.Context, raw, page string) (youtube.CommentsPage, *commentErr) {
+	ttl := commentsTTL(raw, page)
+	area := cacheArea[youtube.CommentsPage]{name: "comments", admit: func(youtube.CommentsPage) admission { return valid(ttl) }}
+	res, f := publicCached(s, ctx, area, publicCacheKey("comments", raw, page), func(ctx context.Context) (youtube.CommentsPage, *extractFail) {
+		res, cerr := s.commentPage(ctx, raw, page)
+		if cerr != nil {
+			return res, &extractFail{Status: cerr.status, Message: cerr.msg, Code: cerr.code, bad: cerr.code == ""}
+		}
+		return res, nil
+	})
+	if f != nil {
+		return res, &commentErr{f.Status, f.Message, f.Code}
+	}
+	return res, nil
+}
+
+func commentsTTL(raw, page string) int64 {
+	l := strings.ToLower(raw)
+	switch {
+	case page != "":
+		return 600
+	case strings.Contains(l, "bilibili.com") || strings.Contains(l, "nicovideo.jp"):
+		return 300
+	default:
+		return 180
+	}
 }
 
 // commentPage is CommentService.getComments: a Bilibili page, no comments for NicoNico (PipePipe has none), or a

@@ -211,21 +211,12 @@ func (s *Server) rewriteProviderHLS(ctx context.Context, body, base string, bid 
 			refs[resolve(t)] = ""
 		}
 	}
-	var mu sync.Mutex
-	var wg sync.WaitGroup
-	slots := make(chan struct{}, 32)
-	for ref := range refs {
-		wg.Go(func() {
-			slots <- struct{}{}
-			defer func() { <-slots }()
-			if p := s.mediaPath(ctx, ref, nil, bid); p != "" {
-				mu.Lock()
-				refs[ref] = "../media/" + strings.TrimPrefix(p, "/media/")
-				mu.Unlock()
-			}
-		})
-	}
-	wg.Wait()
+	mapRefs(refs, 32, func(ref string) string {
+		if p := s.mediaPath(ctx, ref, nil, bid); p != "" {
+			return "../media/" + strings.TrimPrefix(p, "/media/")
+		}
+		return ""
+	})
 	mapped := func(raw string) string {
 		r := resolve(raw)
 		if m := refs[r]; m != "" {
@@ -244,6 +235,30 @@ func (s *Server) rewriteProviderHLS(ctx context.Context, body, base string, bid 
 		}
 	}
 	return strings.Join(lines, "\n")
+}
+
+// mapRefs sets each key of refs to what handle returns, at most limit at a time. The keys are copied first: walking
+// the map while the handles write into it stops the whole process.
+func mapRefs(refs map[string]string, limit int, handle func(string) string) {
+	keys := make([]string, 0, len(refs))
+	for ref := range refs {
+		keys = append(keys, ref)
+	}
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	slots := make(chan struct{}, limit)
+	for _, ref := range keys {
+		wg.Go(func() {
+			slots <- struct{}{}
+			defer func() { <-slots }()
+			if mapped := handle(ref); mapped != "" {
+				mu.Lock()
+				refs[ref] = mapped
+				mu.Unlock()
+			}
+		})
+	}
+	wg.Wait()
 }
 
 func isHLSResponse(ct, target string) bool {

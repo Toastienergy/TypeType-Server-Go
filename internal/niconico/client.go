@@ -69,6 +69,9 @@ func s(v any, keys ...string) string { x, _ := dig(v, keys...).(string); return 
 func n(v any, keys ...string) int64  { x, _ := dig(v, keys...).(float64); return int64(x) }
 
 func (c *Client) watchData(ctx context.Context, id string) (map[string]any, error) {
+	if resp, err := c.guestWatch(ctx, id); err == nil {
+		return checkWatch(resp)
+	}
 	req, _ := http.NewRequestWithContext(ctx, "GET", "https://www.nicovideo.jp/watch/"+id, nil)
 	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)")
 	req.Header.Set("Accept-Language", "ja-JP")
@@ -102,6 +105,10 @@ func (c *Client) watchData(ctx context.Context, id string) (map[string]any, erro
 	if resp == nil {
 		return nil, fmt.Errorf("%w: no watch data", ErrUnavailable)
 	}
+	return checkWatch(resp)
+}
+
+func checkWatch(resp map[string]any) (map[string]any, error) {
 	if s(resp, "errorCode") == "FORBIDDEN" {
 		return nil, fmt.Errorf("%w: %s", ErrUnavailable, s(resp, "reasonCode"))
 	}

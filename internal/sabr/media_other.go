@@ -13,3 +13,5 @@ func mediaAlloc(n int) []byte { return make([]byte, 0, n) }
 func mediaFree([]byte) {}
 
 func trimSpare(int) {}
+
+func spareMappedBytes() int64 { return 0 }

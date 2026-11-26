@@ -131,3 +131,9 @@ func trimSpare(sessions int) {
 		syscall.Munmap(m)
 	}
 }
+
+func spareMappedBytes() int64 {
+	spare.Lock()
+	defer spare.Unlock()
+	return int64(spare.bytes)
+}

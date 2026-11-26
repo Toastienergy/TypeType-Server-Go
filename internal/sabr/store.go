@@ -188,46 +188,67 @@ func lastUsed(s *Session) time.Time {
 	return s.lastUsed
 }
 
-// sweep releases sessions nobody asked anything for idle, and trims the largest ones while the store holds more
-// than its byte budget.
+// unclaimedIdle is how long a session prepared on hover and never taken by a create may sit unused once its
+// prewarm entry expired. Measured on the VPS on 2026-11-26: a third of the prepared sessions are never played, and
+// kept for the full idle eviction they held about half of the media budget.
+const unclaimedIdle = 30 * time.Second
+
 func (st *Store) sweep() {
 	for range time.Tick(5 * time.Second) {
-		st.mu.Lock()
-		all := make([]*Session, 0, len(st.sessions))
-		for _, s := range st.sessions {
-			all = append(all, s)
+		st.sweepOnce()
+	}
+}
+
+// sweepOnce releases sessions nobody asked anything for idle, and prepared sessions nobody took, then trims the
+// largest ones while the store holds more than its byte budget.
+func (st *Store) sweepOnce() {
+	st.mu.Lock()
+	all := make([]*Session, 0, len(st.sessions))
+	for _, s := range st.sessions {
+		all = append(all, s)
+	}
+	unclaimed := map[string]bool{}
+	for k, p := range st.prewarm {
+		if time.Since(p.at) > time.Minute {
+			delete(st.prewarm, k)
+			unclaimed[p.id] = true
 		}
-		for _, m := range []map[string]prewarmed{st.prewarm, st.taken} {
-			for k, p := range m {
-				if time.Since(p.at) > time.Minute {
-					delete(m, k)
-				}
-			}
+	}
+	for k, p := range st.taken {
+		if time.Since(p.at) > time.Minute {
+			delete(st.taken, k)
 		}
-		st.mu.Unlock()
-		trimSpare(len(all))
-		var total int64
+	}
+	for _, p := range st.taken {
+		delete(unclaimed, p.id)
+	}
+	for _, p := range st.prewarm {
+		delete(unclaimed, p.id)
+	}
+	st.mu.Unlock()
+	trimSpare(len(all))
+	var total int64
+	for _, s := range all {
+		idle := time.Since(lastUsed(s))
+		if idle > st.idle || unclaimed[s.ID] && idle > unclaimedIdle {
+			st.Release(s)
+			continue
+		}
+		s.mu.Lock()
+		total += s.bytes
+		s.mu.Unlock()
+	}
+	if st.budget > 0 && total > st.budget {
+		sort.Slice(all, func(i, j int) bool { return lastUsed(all[i]).Before(lastUsed(all[j])) })
 		for _, s := range all {
-			if time.Since(lastUsed(s)) > st.idle {
-				st.Release(s)
-				continue
+			if total <= st.budget {
+				break
 			}
 			s.mu.Lock()
-			total += s.bytes
+			before := s.bytes
+			s.trimAheadLocked()
+			total -= before - s.bytes
 			s.mu.Unlock()
-		}
-		if st.budget > 0 && total > st.budget {
-			sort.Slice(all, func(i, j int) bool { return lastUsed(all[i]).Before(lastUsed(all[j])) })
-			for _, s := range all {
-				if total <= st.budget {
-					break
-				}
-				s.mu.Lock()
-				before := s.bytes
-				s.trimAheadLocked()
-				total -= before - s.bytes
-				s.mu.Unlock()
-			}
 		}
 	}
 }
